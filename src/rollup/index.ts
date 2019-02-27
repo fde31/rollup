@@ -35,7 +35,7 @@ function checkOutputOptions(options: OutputOptions) {
 
 	if (!options.format) {
 		error({
-			message: `You must specify output.format, which can be one of 'amd', 'cjs', 'system', 'esm', 'iife' or 'umd'`,
+			message: `You must specify output.format, which can be one of 'amd', 'cjs', 'system', 'esm', 'iife', 'umd' or 'c74max'`,
 			url: `https://rollupjs.org/guide/en#output-format`
 		});
 	}
@@ -453,7 +453,11 @@ function normalizeOutputOptions(
 	}
 
 	if (hasMultipleChunks) {
-		if (outputOptions.format === 'umd' || outputOptions.format === 'iife')
+		if (
+			outputOptions.format === 'umd' ||
+			outputOptions.format === 'iife' ||
+			outputOptions.format === 'c74max'
+		)
 			error({
 				code: 'INVALID_OPTION',
 				message: 'UMD and IIFE output formats are not supported for code-splitting builds.'

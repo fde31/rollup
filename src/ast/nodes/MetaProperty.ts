@@ -12,7 +12,8 @@ const importMetaUrlMechanisms: Record<string, string> = {
 	amd: `new URL((typeof process !== 'undefined' && process.versions && process.versions.node ? 'file:' : '') + module.uri).href`,
 	cjs: `new (typeof URL !== 'undefined' ? URL : require('ur'+'l').URL)((process.browser ? '' : 'file:') + __filename, process.browser && document.baseURI).href`,
 	iife: globalImportMetaUrlMechanism,
-	umd: globalImportMetaUrlMechanism
+	umd: globalImportMetaUrlMechanism,
+	c74max: globalImportMetaUrlMechanism
 };
 
 const globalImportMetaUrlMechanismCompact = `(typeof document!=='undefined'?document.currentScript&&document.currentScript.src||document.baseURI:new(typeof URL!=='undefined'?URL:require('ur'+'l').URL)('file:'+__filename).href)`;
@@ -20,7 +21,8 @@ const importMetaUrlMechanismsCompact: Record<string, string> = {
 	amd: `new URL((typeof process!=='undefined'&&process.versions&&process.versions.node?'file:':'')+module.uri).href`,
 	cjs: `new(typeof URL!=='undefined'?URL:require('ur'+'l').URL)((process.browser?'':'file:')+__filename,process.browser&&document.baseURI).href`,
 	iife: globalImportMetaUrlMechanismCompact,
-	umd: globalImportMetaUrlMechanismCompact
+	umd: globalImportMetaUrlMechanismCompact,
+	c74max: globalImportMetaUrlMechanism
 };
 
 const globalRelUrlMechanism = (relPath: string, compact: boolean) => {
@@ -46,7 +48,8 @@ const relUrlMechanisms: Record<string, (relPath: string, compact: boolean) => st
 		return `new URL('../${relPath}',${_}module.url).href`;
 	},
 	iife: globalRelUrlMechanism,
-	umd: globalRelUrlMechanism
+	umd: globalRelUrlMechanism,
+	c74max: globalRelUrlMechanism
 };
 
 export default class MetaProperty extends NodeBase {

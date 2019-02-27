@@ -63,6 +63,7 @@ export const RESERVED_NAMES_BY_FORMAT: {
 		forbiddenNames: RESERVED_NAMES
 	},
 	iife: { formatGlobals: EXPORTS, forbiddenNames: RESERVED_NAMES },
+	c74max: { formatGlobals: EXPORTS, forbiddenNames: RESERVED_NAMES },
 	amd: { formatGlobals: EXPORTS, forbiddenNames: RESERVED_NAMES },
 	umd: { formatGlobals: EXPORTS, forbiddenNames: RESERVED_NAMES },
 	system: {

@@ -20,7 +20,8 @@ const DECONFLICT_IMPORTED_VARIABLES_BY_FORMAT: {
 	amd: deconflictImportsOther,
 	umd: deconflictImportsOther,
 	system: deconflictImportsEsm,
-	es: deconflictImportsEsm
+	es: deconflictImportsEsm,
+	c74max: deconflictImportsOther
 };
 
 export function deconflictChunk(
