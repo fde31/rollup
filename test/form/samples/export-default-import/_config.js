@@ -1,4 +1,10 @@
 module.exports = {
 	description: 'correctly exports a default import, even in ES mode (#513)',
-	options: { output: { name: 'myBundle' } }
+	options: {
+		external: ['x'],
+		output: {
+			globals: { x: 'x' },
+			name: 'myBundle'
+		}
+	}
 };

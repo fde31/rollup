@@ -1,9 +1,11 @@
 'use strict';
 
-var __chunk_4 = require('../lib/lib1.js');
+Object.defineProperty(exports, '__esModule', { value: true });
+
+var lib1 = require('../lib/lib1.js');
 
 function fn () {
-  __chunk_4.fn();
+  lib1.fn();
   console.log('dep3 fn');
 }
 

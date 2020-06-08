@@ -1,6 +1,8 @@
 import * as external from 'external';
 import foo from './foo.js';
+
 export { quux as strange } from './quux.js';
+export * from './quux.js';
 
 function baz() {
 	return foo + external.value;
@@ -26,3 +28,21 @@ function unusedButIncluded() {
 			const ignored = 2;
 	}
 }
+
+function test(
+	unusedParam = {
+		prop: function test() {
+			var unused = 1;
+		}
+	}
+) {}
+
+test({
+	prop: function test() {
+		var unused = 1;
+	}
+});
+
+try {
+	const x = 1;
+} catch {}

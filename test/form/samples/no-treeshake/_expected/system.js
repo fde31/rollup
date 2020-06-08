@@ -1,4 +1,4 @@
-System.register('stirred', ['external'], function (exports, module) {
+System.register('stirred', ['external'], function (exports) {
 	'use strict';
 	var value;
 	return {
@@ -9,7 +9,7 @@ System.register('stirred', ['external'], function (exports, module) {
 
 			var foo = 13;
 
-			const quux = exports('strange', 1);
+			const quux = function (v) { return exports({ strange: v, quux: v }), v; }(1);
 
 			const other = () => quux;
 
@@ -37,6 +37,24 @@ System.register('stirred', ['external'], function (exports, module) {
 						const ignored = 2;
 				}
 			}
+
+			function test(
+				unusedParam = {
+					prop: function test() {
+						var unused = 1;
+					}
+				}
+			) {}
+
+			test({
+				prop: function test() {
+					var unused = 1;
+				}
+			});
+
+			try {
+				const x = 1;
+			} catch {}
 
 		}
 	};

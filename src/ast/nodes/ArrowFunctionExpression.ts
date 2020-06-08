@@ -1,60 +1,96 @@
-import CallOptions from '../CallOptions';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
+import { CallOptions } from '../CallOptions';
+import { BROKEN_FLOW_NONE, HasEffectsContext, InclusionContext } from '../ExecutionContext';
 import ReturnValueScope from '../scopes/ReturnValueScope';
 import Scope from '../scopes/Scope';
-import { ObjectPath, UNKNOWN_EXPRESSION, UNKNOWN_KEY, UNKNOWN_PATH } from '../values';
+import { ObjectPath, UnknownKey, UNKNOWN_PATH } from '../utils/PathTracker';
+import { UNKNOWN_EXPRESSION } from '../values';
 import BlockStatement from './BlockStatement';
+import Identifier from './Identifier';
 import * as NodeType from './NodeType';
-import { ExpressionNode, GenericEsTreeNode, NodeBase } from './shared/Node';
+import RestElement from './RestElement';
+import { ExpressionNode, GenericEsTreeNode, IncludeChildren, NodeBase } from './shared/Node';
 import { PatternNode } from './shared/Pattern';
+import SpreadElement from './SpreadElement';
 
 export default class ArrowFunctionExpression extends NodeBase {
-	type: NodeType.tArrowFunctionExpression;
-	body: BlockStatement | ExpressionNode;
-	params: PatternNode[];
-
-	scope: ReturnValueScope;
-	preventChildBlockScope: true;
+	body!: BlockStatement | ExpressionNode;
+	params!: PatternNode[];
+	preventChildBlockScope!: true;
+	scope!: ReturnValueScope;
+	type!: NodeType.tArrowFunctionExpression;
 
 	createScope(parentScope: Scope) {
 		this.scope = new ReturnValueScope(parentScope, this.context);
+	}
+
+	deoptimizePath(path: ObjectPath) {
+		// A reassignment of UNKNOWN_PATH is considered equivalent to having lost track
+		// which means the return expression needs to be reassigned
+		if (path.length === 1 && path[0] === UnknownKey) {
+			this.scope.getReturnExpression().deoptimizePath(UNKNOWN_PATH);
+		}
 	}
 
 	getReturnExpressionWhenCalledAtPath(path: ObjectPath) {
 		return path.length === 0 ? this.scope.getReturnExpression() : UNKNOWN_EXPRESSION;
 	}
 
-	hasEffects(_options: ExecutionPathOptions) {
+	hasEffects() {
 		return false;
 	}
 
-	hasEffectsWhenAccessedAtPath(path: ObjectPath, _options: ExecutionPathOptions) {
+	hasEffectsWhenAccessedAtPath(path: ObjectPath) {
 		return path.length > 1;
 	}
 
-	hasEffectsWhenAssignedAtPath(path: ObjectPath, _options: ExecutionPathOptions) {
+	hasEffectsWhenAssignedAtPath(path: ObjectPath) {
 		return path.length > 1;
 	}
 
 	hasEffectsWhenCalledAtPath(
 		path: ObjectPath,
 		_callOptions: CallOptions,
-		options: ExecutionPathOptions
+		context: HasEffectsContext
 	): boolean {
-		if (path.length > 0) {
-			return true;
-		}
+		if (path.length > 0) return true;
 		for (const param of this.params) {
-			if (param.hasEffects(options)) return true;
+			if (param.hasEffects(context)) return true;
 		}
-		return this.body.hasEffects(options);
+		const { ignore, brokenFlow } = context;
+		context.ignore = {
+			breaks: false,
+			continues: false,
+			labels: new Set(),
+			returnAwaitYield: true
+		};
+		if (this.body.hasEffects(context)) return true;
+		context.ignore = ignore;
+		context.brokenFlow = brokenFlow;
+		return false;
+	}
+
+	include(context: InclusionContext, includeChildrenRecursively: IncludeChildren) {
+		this.included = true;
+		for (const param of this.params) {
+			if (!(param instanceof Identifier)) {
+				param.include(context, includeChildrenRecursively);
+			}
+		}
+		const { brokenFlow } = context;
+		context.brokenFlow = BROKEN_FLOW_NONE;
+		this.body.include(context, includeChildrenRecursively);
+		context.brokenFlow = brokenFlow;
+	}
+
+	includeCallArguments(context: InclusionContext, args: (ExpressionNode | SpreadElement)[]): void {
+		this.scope.includeCallArguments(context, args);
 	}
 
 	initialise() {
-		this.included = false;
-		for (const param of this.params) {
-			param.declare('parameter', UNKNOWN_EXPRESSION);
-		}
+		this.scope.addParameterVariables(
+			this.params.map(param => param.declare('parameter', UNKNOWN_EXPRESSION)),
+			this.params[this.params.length - 1] instanceof RestElement
+		);
 		if (this.body instanceof BlockStatement) {
 			this.body.addImplicitReturnExpressionToScope();
 		} else {
@@ -71,14 +107,6 @@ export default class ArrowFunctionExpression extends NodeBase {
 			);
 		}
 		super.parseNode(esTreeNode);
-	}
-
-	deoptimizePath(path: ObjectPath) {
-		// A reassignment of UNKNOWN_PATH is considered equivalent to having lost track
-		// which means the return expression needs to be reassigned
-		if (path.length === 1 && path[0] === UNKNOWN_KEY) {
-			this.scope.getReturnExpression().deoptimizePath(UNKNOWN_PATH);
-		}
 	}
 }
 

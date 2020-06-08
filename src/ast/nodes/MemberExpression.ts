@@ -1,34 +1,36 @@
 import MagicString from 'magic-string';
+import { NormalizedTreeshakingOptions } from '../../rollup/types';
 import { BLANK } from '../../utils/blank';
 import relativeId from '../../utils/relativeId';
 import { NodeRenderOptions, RenderOptions } from '../../utils/renderHelpers';
-import CallOptions from '../CallOptions';
+import { CallOptions } from '../CallOptions';
 import { DeoptimizableEntity } from '../DeoptimizableEntity';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
-import {
-	EMPTY_IMMUTABLE_TRACKER,
-	ImmutableEntityPathTracker
-} from '../utils/ImmutableEntityPathTracker';
+import { HasEffectsContext, InclusionContext } from '../ExecutionContext';
 import {
 	EMPTY_PATH,
-	LiteralValueOrUnknown,
 	ObjectPath,
 	ObjectPathKey,
-	UNKNOWN_KEY,
-	UNKNOWN_VALUE
-} from '../values';
+	PathTracker,
+	SHARED_RECURSION_TRACKER,
+	UnknownKey,
+	UNKNOWN_PATH
+} from '../utils/PathTracker';
+import { LiteralValueOrUnknown, UnknownValue } from '../values';
 import ExternalVariable from '../variables/ExternalVariable';
 import NamespaceVariable from '../variables/NamespaceVariable';
 import Variable from '../variables/Variable';
 import Identifier from './Identifier';
 import Literal from './Literal';
 import * as NodeType from './NodeType';
-import { ExpressionNode, Node, NodeBase } from './shared/Node';
+import { ExpressionNode, IncludeChildren, NodeBase } from './shared/Node';
+import { PatternNode } from './shared/Pattern';
+import SpreadElement from './SpreadElement';
+import Super from './Super';
 
 function getResolvablePropertyKey(memberExpression: MemberExpression): string | null {
 	return memberExpression.computed
 		? getResolvableComputedPropertyKey(memberExpression.property)
-		: (<Identifier>memberExpression.property).name;
+		: (memberExpression.property as Identifier).name;
 }
 
 function getResolvableComputedPropertyKey(propertyKey: ExpressionNode): string | null {
@@ -50,7 +52,7 @@ function getPathIfNotComputed(memberExpression: MemberExpression): PathWithPosit
 				{ key: nextPathKey, pos: memberExpression.property.start }
 			];
 		}
-		if (isMemberExpression(object)) {
+		if (object instanceof MemberExpression) {
 			const parentPath = getPathIfNotComputed(object);
 			return (
 				parentPath && [...parentPath, { key: nextPathKey, pos: memberExpression.property.start }]
@@ -68,21 +70,21 @@ function getStringFromPath(path: PathWithPositions): string {
 	return pathString;
 }
 
-export function isMemberExpression(node: Node): node is MemberExpression {
-	return node.type === NodeType.MemberExpression;
-}
+export default class MemberExpression extends NodeBase implements DeoptimizableEntity, PatternNode {
+	computed!: boolean;
+	object!: ExpressionNode | Super;
+	optional?: boolean;
+	property!: ExpressionNode;
+	propertyKey!: ObjectPathKey | null;
+	type!: NodeType.tMemberExpression;
+	variable: Variable | null = null;
 
-export default class MemberExpression extends NodeBase implements DeoptimizableEntity {
-	type: NodeType.tMemberExpression;
-	object: ExpressionNode;
-	property: ExpressionNode;
-	computed: boolean;
+	private bound = false;
+	private expressionsToBeDeoptimized: DeoptimizableEntity[] = [];
+	private replacement: string | null = null;
+	private wasPathDeoptimizedWhileOptimized = false;
 
-	propertyKey: ObjectPathKey | null;
-	variable: Variable = null;
-	private bound: boolean;
-	private replacement: string | null;
-	private expressionsToBeDeoptimized: DeoptimizableEntity[];
+	addExportedVariables(): void {}
 
 	bind() {
 		if (this.bound) return;
@@ -90,119 +92,35 @@ export default class MemberExpression extends NodeBase implements DeoptimizableE
 		const path = getPathIfNotComputed(this);
 		const baseVariable = path && this.scope.findVariable(path[0].key);
 		if (baseVariable && baseVariable.isNamespace) {
-			const resolvedVariable = this.resolveNamespaceVariables(baseVariable, path.slice(1));
+			const resolvedVariable = this.resolveNamespaceVariables(baseVariable, path!.slice(1));
 			if (!resolvedVariable) {
 				super.bind();
 			} else if (typeof resolvedVariable === 'string') {
 				this.replacement = resolvedVariable;
 			} else {
-				if (resolvedVariable.isExternal && (<ExternalVariable>resolvedVariable).module) {
-					(<ExternalVariable>resolvedVariable).module.suggestName(path[0].key);
+				if (resolvedVariable instanceof ExternalVariable && resolvedVariable.module) {
+					resolvedVariable.module.suggestName(path![0].key);
 				}
 				this.variable = resolvedVariable;
-				this.scope.addNamespaceMemberAccess(getStringFromPath(path), resolvedVariable);
+				this.scope.addNamespaceMemberAccess(getStringFromPath(path!), resolvedVariable);
 			}
 		} else {
 			super.bind();
-			if (this.propertyKey === null) this.analysePropertyKey();
+			// ensure the propertyKey is set for the tree-shaking passes
+			this.getPropertyKey();
 		}
 	}
 
 	deoptimizeCache() {
-		for (const expression of this.expressionsToBeDeoptimized) {
+		const expressionsToBeDeoptimized = this.expressionsToBeDeoptimized;
+		this.expressionsToBeDeoptimized = [];
+		this.propertyKey = UnknownKey;
+		if (this.wasPathDeoptimizedWhileOptimized) {
+			this.object.deoptimizePath(UNKNOWN_PATH);
+		}
+		for (const expression of expressionsToBeDeoptimized) {
 			expression.deoptimizeCache();
 		}
-	}
-
-	getLiteralValueAtPath(
-		path: ObjectPath,
-		recursionTracker: ImmutableEntityPathTracker,
-		origin: DeoptimizableEntity
-	): LiteralValueOrUnknown {
-		if (this.variable !== null) {
-			return this.variable.getLiteralValueAtPath(path, recursionTracker, origin);
-		}
-		if (this.propertyKey === null) this.analysePropertyKey();
-		this.expressionsToBeDeoptimized.push(origin);
-		return this.object.getLiteralValueAtPath([this.propertyKey, ...path], recursionTracker, origin);
-	}
-
-	getReturnExpressionWhenCalledAtPath(
-		path: ObjectPath,
-		recursionTracker: ImmutableEntityPathTracker,
-		origin: DeoptimizableEntity
-	) {
-		if (this.variable !== null) {
-			return this.variable.getReturnExpressionWhenCalledAtPath(path, recursionTracker, origin);
-		}
-		if (this.propertyKey === null) this.analysePropertyKey();
-		this.expressionsToBeDeoptimized.push(origin);
-		return this.object.getReturnExpressionWhenCalledAtPath(
-			[this.propertyKey, ...path],
-			recursionTracker,
-			origin
-		);
-	}
-
-	hasEffects(options: ExecutionPathOptions): boolean {
-		return (
-			this.property.hasEffects(options) ||
-			this.object.hasEffects(options) ||
-			(this.context.propertyReadSideEffects &&
-				this.object.hasEffectsWhenAccessedAtPath([this.propertyKey], options))
-		);
-	}
-
-	hasEffectsWhenAccessedAtPath(path: ObjectPath, options: ExecutionPathOptions): boolean {
-		if (path.length === 0) {
-			return false;
-		}
-		if (this.variable !== null) {
-			return this.variable.hasEffectsWhenAccessedAtPath(path, options);
-		}
-		return this.object.hasEffectsWhenAccessedAtPath([this.propertyKey, ...path], options);
-	}
-
-	hasEffectsWhenAssignedAtPath(path: ObjectPath, options: ExecutionPathOptions): boolean {
-		if (this.variable !== null) {
-			return this.variable.hasEffectsWhenAssignedAtPath(path, options);
-		}
-		return this.object.hasEffectsWhenAssignedAtPath([this.propertyKey, ...path], options);
-	}
-
-	hasEffectsWhenCalledAtPath(
-		path: ObjectPath,
-		callOptions: CallOptions,
-		options: ExecutionPathOptions
-	): boolean {
-		if (this.variable !== null) {
-			return this.variable.hasEffectsWhenCalledAtPath(path, callOptions, options);
-		}
-		return this.object.hasEffectsWhenCalledAtPath(
-			[this.propertyKey, ...path],
-			callOptions,
-			options
-		);
-	}
-
-	include(includeAllChildrenRecursively: boolean) {
-		if (!this.included) {
-			this.included = true;
-			if (this.variable !== null) {
-				this.context.includeVariable(this.variable);
-			}
-		}
-		this.object.include(includeAllChildrenRecursively);
-		this.property.include(includeAllChildrenRecursively);
-	}
-
-	initialise() {
-		this.included = false;
-		this.propertyKey = getResolvablePropertyKey(this);
-		this.variable = null;
-		this.bound = false;
-		this.replacement = null;
-		this.expressionsToBeDeoptimized = [];
 	}
 
 	deoptimizePath(path: ObjectPath) {
@@ -211,9 +129,110 @@ export default class MemberExpression extends NodeBase implements DeoptimizableE
 		if (this.variable) {
 			this.variable.deoptimizePath(path);
 		} else {
-			if (this.propertyKey === null) this.analysePropertyKey();
-			this.object.deoptimizePath([this.propertyKey, ...path]);
+			const propertyKey = this.getPropertyKey();
+			if (propertyKey === UnknownKey) {
+				this.object.deoptimizePath(UNKNOWN_PATH);
+			} else {
+				this.wasPathDeoptimizedWhileOptimized = true;
+				this.object.deoptimizePath([propertyKey, ...path]);
+			}
 		}
+	}
+
+	getLiteralValueAtPath(
+		path: ObjectPath,
+		recursionTracker: PathTracker,
+		origin: DeoptimizableEntity
+	): LiteralValueOrUnknown {
+		if (!this.bound) this.bind();
+		if (this.variable !== null) {
+			return this.variable.getLiteralValueAtPath(path, recursionTracker, origin);
+		}
+		this.expressionsToBeDeoptimized.push(origin);
+		return this.object.getLiteralValueAtPath(
+			[this.getPropertyKey(), ...path],
+			recursionTracker,
+			origin
+		);
+	}
+
+	getReturnExpressionWhenCalledAtPath(
+		path: ObjectPath,
+		recursionTracker: PathTracker,
+		origin: DeoptimizableEntity
+	) {
+		if (!this.bound) this.bind();
+		if (this.variable !== null) {
+			return this.variable.getReturnExpressionWhenCalledAtPath(path, recursionTracker, origin);
+		}
+		this.expressionsToBeDeoptimized.push(origin);
+		return this.object.getReturnExpressionWhenCalledAtPath(
+			[this.getPropertyKey(), ...path],
+			recursionTracker,
+			origin
+		);
+	}
+
+	hasEffects(context: HasEffectsContext): boolean {
+		return (
+			this.property.hasEffects(context) ||
+			this.object.hasEffects(context) ||
+			((this.context.options.treeshake as NormalizedTreeshakingOptions).propertyReadSideEffects &&
+				this.object.hasEffectsWhenAccessedAtPath([this.propertyKey!], context))
+		);
+	}
+
+	hasEffectsWhenAccessedAtPath(path: ObjectPath, context: HasEffectsContext): boolean {
+		if (path.length === 0) return false;
+		if (this.variable !== null) {
+			return this.variable.hasEffectsWhenAccessedAtPath(path, context);
+		}
+		return this.object.hasEffectsWhenAccessedAtPath([this.propertyKey!, ...path], context);
+	}
+
+	hasEffectsWhenAssignedAtPath(path: ObjectPath, context: HasEffectsContext): boolean {
+		if (this.variable !== null) {
+			return this.variable.hasEffectsWhenAssignedAtPath(path, context);
+		}
+		return this.object.hasEffectsWhenAssignedAtPath([this.propertyKey!, ...path], context);
+	}
+
+	hasEffectsWhenCalledAtPath(
+		path: ObjectPath,
+		callOptions: CallOptions,
+		context: HasEffectsContext
+	): boolean {
+		if (this.variable !== null) {
+			return this.variable.hasEffectsWhenCalledAtPath(path, callOptions, context);
+		}
+		return this.object.hasEffectsWhenCalledAtPath(
+			[this.propertyKey!, ...path],
+			callOptions,
+			context
+		);
+	}
+
+	include(context: InclusionContext, includeChildrenRecursively: IncludeChildren) {
+		if (!this.included) {
+			this.included = true;
+			if (this.variable !== null) {
+				this.context.includeVariable(this.variable);
+			}
+		}
+		this.object.include(context, includeChildrenRecursively);
+		this.property.include(context, includeChildrenRecursively);
+	}
+
+	includeCallArguments(context: InclusionContext, args: (ExpressionNode | SpreadElement)[]): void {
+		if (this.variable) {
+			this.variable.includeCallArguments(context, args);
+		} else {
+			super.includeCallArguments(context, args);
+		}
+	}
+
+	initialise() {
+		this.propertyKey = getResolvablePropertyKey(this);
 	}
 
 	render(
@@ -226,9 +245,9 @@ export default class MemberExpression extends NodeBase implements DeoptimizableE
 		if (this.variable || this.replacement) {
 			let replacement = this.variable ? this.variable.getName() : this.replacement;
 			if (isCalleeOfDifferentParent) replacement = '0, ' + replacement;
-			code.overwrite(this.start, this.end, replacement, {
-				storeName: true,
-				contentOnly: true
+			code.overwrite(this.start, this.end, replacement!, {
+				contentOnly: true,
+				storeName: true
 			});
 		} else {
 			if (isCalleeOfDifferentParent) {
@@ -243,7 +262,7 @@ export default class MemberExpression extends NodeBase implements DeoptimizableE
 			this.object instanceof Identifier &&
 			this.scope.findVariable(this.object.name).isNamespace
 		) {
-			this.context.error(
+			return this.context.error(
 				{
 					code: 'ILLEGAL_NAMESPACE_REASSIGNMENT',
 					message: `Illegal reassignment to import '${this.object.name}'`
@@ -253,6 +272,15 @@ export default class MemberExpression extends NodeBase implements DeoptimizableE
 		}
 	}
 
+	private getPropertyKey(): ObjectPathKey {
+		if (this.propertyKey === null) {
+			this.propertyKey = UnknownKey;
+			const value = this.property.getLiteralValueAtPath(EMPTY_PATH, SHARED_RECURSION_TRACKER, this);
+			return (this.propertyKey = value === UnknownValue ? UnknownKey : String(value));
+		}
+		return this.propertyKey;
+	}
+
 	private resolveNamespaceVariables(
 		baseVariable: Variable,
 		path: PathWithPositions
@@ -260,32 +288,28 @@ export default class MemberExpression extends NodeBase implements DeoptimizableE
 		if (path.length === 0) return baseVariable;
 		if (!baseVariable.isNamespace) return null;
 		const exportName = path[0].key;
-		const variable = baseVariable.isExternal
-			? (<ExternalVariable>baseVariable).module.getVariableForExportName(exportName)
-			: (<NamespaceVariable>baseVariable).context.traceExport(exportName);
+		const variable =
+			baseVariable instanceof ExternalVariable
+				? baseVariable.module.getVariableForExportName(exportName)
+				: (baseVariable as NamespaceVariable).context.traceExport(exportName);
 		if (!variable) {
-			const fileName = baseVariable.isExternal
-				? (<ExternalVariable>baseVariable).module.id
-				: (<NamespaceVariable>baseVariable).context.fileName;
+			const fileName =
+				baseVariable instanceof ExternalVariable
+					? baseVariable.module.id
+					: (baseVariable as NamespaceVariable).context.fileName;
 			this.context.warn(
 				{
 					code: 'MISSING_EXPORT',
-					missing: exportName,
-					importer: relativeId(this.context.fileName),
 					exporter: relativeId(fileName),
+					importer: relativeId(this.context.fileName),
 					message: `'${exportName}' is not exported by '${relativeId(fileName)}'`,
-					url: `https://rollupjs.org/guide/en#error-name-is-not-exported-by-module-`
+					missing: exportName,
+					url: `https://rollupjs.org/guide/en/#error-name-is-not-exported-by-module`
 				},
 				path[0].pos
 			);
 			return 'undefined';
 		}
 		return this.resolveNamespaceVariables(variable, path.slice(1));
-	}
-
-	private analysePropertyKey() {
-		this.propertyKey = UNKNOWN_KEY;
-		const value = this.property.getLiteralValueAtPath(EMPTY_PATH, EMPTY_IMMUTABLE_TRACKER, this);
-		this.propertyKey = value === UNKNOWN_VALUE ? UNKNOWN_KEY : String(value);
 	}
 }

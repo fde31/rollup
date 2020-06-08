@@ -1,8 +1,8 @@
 import MagicString from 'magic-string';
 import { BLANK } from '../../utils/blank';
 import { NodeRenderOptions, RenderOptions } from '../../utils/renderHelpers';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
-import { EMPTY_PATH, ObjectPath, UNKNOWN_PATH } from '../values';
+import { HasEffectsContext } from '../ExecutionContext';
+import { EMPTY_PATH, ObjectPath, UNKNOWN_PATH } from '../utils/PathTracker';
 import Variable from '../variables/Variable';
 import * as NodeType from './NodeType';
 import { ExpressionEntity } from './shared/Expression';
@@ -10,12 +10,15 @@ import { ExpressionNode, NodeBase } from './shared/Node';
 import { PatternNode } from './shared/Pattern';
 
 export default class AssignmentPattern extends NodeBase implements PatternNode {
-	type: NodeType.tAssignmentPattern;
-	left: PatternNode;
-	right: ExpressionNode;
+	left!: PatternNode;
+	right!: ExpressionNode;
+	type!: NodeType.tAssignmentPattern;
 
-	addExportedVariables(variables: Variable[]): void {
-		this.left.addExportedVariables(variables);
+	addExportedVariables(
+		variables: Variable[],
+		exportNamesByVariable: Map<Variable, string[]>
+	): void {
+		this.left.addExportedVariables(variables, exportNamesByVariable);
 	}
 
 	bind() {
@@ -25,15 +28,15 @@ export default class AssignmentPattern extends NodeBase implements PatternNode {
 	}
 
 	declare(kind: string, init: ExpressionEntity) {
-		this.left.declare(kind, init);
-	}
-
-	hasEffectsWhenAssignedAtPath(path: ObjectPath, options: ExecutionPathOptions): boolean {
-		return path.length > 0 || this.left.hasEffectsWhenAssignedAtPath(EMPTY_PATH, options);
+		return this.left.declare(kind, init);
 	}
 
 	deoptimizePath(path: ObjectPath) {
 		path.length === 0 && this.left.deoptimizePath(path);
+	}
+
+	hasEffectsWhenAssignedAtPath(path: ObjectPath, context: HasEffectsContext): boolean {
+		return path.length > 0 || this.left.hasEffectsWhenAssignedAtPath(EMPTY_PATH, context);
 	}
 
 	render(

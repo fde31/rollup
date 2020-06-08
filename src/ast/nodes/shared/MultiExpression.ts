@@ -1,12 +1,13 @@
-import CallOptions from '../../CallOptions';
+import { CallOptions } from '../../CallOptions';
 import { DeoptimizableEntity } from '../../DeoptimizableEntity';
-import { ExecutionPathOptions } from '../../ExecutionPathOptions';
-import { ImmutableEntityPathTracker } from '../../utils/ImmutableEntityPathTracker';
-import { LiteralValueOrUnknown, ObjectPath, UNKNOWN_VALUE } from '../../values';
+import { HasEffectsContext, InclusionContext } from '../../ExecutionContext';
+import { ObjectPath, PathTracker } from '../../utils/PathTracker';
+import { LiteralValueOrUnknown, UnknownValue } from '../../values';
 import { ExpressionEntity } from './Expression';
+import { IncludeChildren } from './Node';
 
 export class MultiExpression implements ExpressionEntity {
-	included: boolean;
+	included = false;
 
 	private expressions: ExpressionEntity[];
 
@@ -14,13 +15,19 @@ export class MultiExpression implements ExpressionEntity {
 		this.expressions = expressions;
 	}
 
+	deoptimizePath(path: ObjectPath): void {
+		for (const expression of this.expressions) {
+			expression.deoptimizePath(path);
+		}
+	}
+
 	getLiteralValueAtPath(): LiteralValueOrUnknown {
-		return UNKNOWN_VALUE;
+		return UnknownValue;
 	}
 
 	getReturnExpressionWhenCalledAtPath(
 		path: ObjectPath,
-		recursionTracker: ImmutableEntityPathTracker,
+		recursionTracker: PathTracker,
 		origin: DeoptimizableEntity
 	): ExpressionEntity {
 		return new MultiExpression(
@@ -30,16 +37,16 @@ export class MultiExpression implements ExpressionEntity {
 		);
 	}
 
-	hasEffectsWhenAccessedAtPath(path: ObjectPath, options: ExecutionPathOptions): boolean {
+	hasEffectsWhenAccessedAtPath(path: ObjectPath, context: HasEffectsContext): boolean {
 		for (const expression of this.expressions) {
-			if (expression.hasEffectsWhenAccessedAtPath(path, options)) return true;
+			if (expression.hasEffectsWhenAccessedAtPath(path, context)) return true;
 		}
 		return false;
 	}
 
-	hasEffectsWhenAssignedAtPath(path: ObjectPath, options: ExecutionPathOptions): boolean {
+	hasEffectsWhenAssignedAtPath(path: ObjectPath, context: HasEffectsContext): boolean {
 		for (const expression of this.expressions) {
-			if (expression.hasEffectsWhenAssignedAtPath(path, options)) return true;
+			if (expression.hasEffectsWhenAssignedAtPath(path, context)) return true;
 		}
 		return false;
 	}
@@ -47,19 +54,23 @@ export class MultiExpression implements ExpressionEntity {
 	hasEffectsWhenCalledAtPath(
 		path: ObjectPath,
 		callOptions: CallOptions,
-		options: ExecutionPathOptions
+		context: HasEffectsContext
 	): boolean {
 		for (const expression of this.expressions) {
-			if (expression.hasEffectsWhenCalledAtPath(path, callOptions, options)) return true;
+			if (expression.hasEffectsWhenCalledAtPath(path, callOptions, context)) return true;
 		}
 		return false;
 	}
 
-	include(): void {}
-
-	deoptimizePath(path: ObjectPath): void {
+	include(context: InclusionContext, includeChildrenRecursively: IncludeChildren): void {
+		// This is only relevant to include values that do not have an AST representation,
+		// such as UnknownArrayExpression. Thus we only need to include them once.
 		for (const expression of this.expressions) {
-			expression.deoptimizePath(path);
+			if (!expression.included) {
+				expression.include(context, includeChildrenRecursively);
+			}
 		}
 	}
+
+	includeCallArguments(): void {}
 }

@@ -4,16 +4,16 @@ title: Integrating Rollup With Other Tools
 
 ### With NPM Packages
 
-At some point, it's very likely that your project will depend on packages installed from NPM into your `node_modules` folder. Unlike other bundlers such as Webpack and Browserify, Rollup doesn't know "out of the box" how to handle these dependencies - we need to add some configuration.
+At some point, it's likely that your project will depend on packages installed from NPM into your `node_modules` folder. Unlike other bundlers such as Webpack and Browserify, Rollup doesn't know "out of the box" how to handle these dependencies - we need to add some configuration.
 
 Let's add a simple dependency called [the-answer](https://www.npmjs.com/package/the-answer), which exports the answer to the question of life, the universe and everything:
 
-```console
+```
 npm install the-answer
 # or `npm i the-answer`
 ```
 
-If we update our `src/main.js` file...
+If we update our `src/main.js` file…
 
 ```js
 // src/main.js
@@ -24,13 +24,13 @@ export default function () {
 }
 ```
 
-...and run Rollup...
+…and run Rollup…
 
-```console
+```
 npm run build
 ```
 
-...we'll see a warning like this:
+…we'll see a warning like this:
 
 ```
 (!) Unresolved dependencies
@@ -41,19 +41,19 @@ the-answer (imported by main.js)
 The resulting `bundle.js` will still work in Node.js, because the `import` declaration gets turned into a CommonJS `require` statement, but `the-answer` does *not* get included in the bundle. For that, we need a plugin.
 
 
-#### rollup-plugin-node-resolve
+#### @rollup/plugin-node-resolve
 
-The [rollup-plugin-node-resolve](https://github.com/rollup/rollup-plugin-node-resolve) plugin teaches Rollup how to find external modules. Install it...
+The [@rollup/plugin-node-resolve](https://github.com/rollup/plugins/tree/master/packages/node-resolve) plugin teaches Rollup how to find external modules. Install it…
 
-```console
-npm install --save-dev rollup-plugin-node-resolve
+```
+npm install --save-dev @rollup/plugin-node-resolve
 ```
 
-...and add it to your config file:
+…and add it to your config file:
 
 ```js
 // rollup.config.js
-import resolve from 'rollup-plugin-node-resolve';
+import resolve from '@rollup/plugin-node-resolve';
 
 export default {
   input: 'src/main.js',
@@ -68,13 +68,13 @@ export default {
 This time, when you `npm run build`, no warning is emitted — the bundle contains the imported module.
 
 
-#### rollup-plugin-commonjs
+#### @rollup/plugin-commonjs
 
 Some libraries expose ES modules that you can import as-is — `the-answer` is one such module. But at the moment, the majority of packages on NPM are exposed as CommonJS modules instead. Until that changes, we need to convert CommonJS to ES2015 before Rollup can process them.
 
-The [rollup-plugin-commonjs](https://github.com/rollup/rollup-plugin-commonjs) plugin does exactly that.
+The [@rollup/plugin-commonjs](https://github.com/rollup/plugins/tree/master/packages/commonjs) plugin does exactly that.
 
-Note that `rollup-plugin-commonjs` should go *before* other plugins that transform your modules — this is to prevent other plugins from making changes that break the CommonJS detection.
+Note that `@rollup/plugin-commonjs` should go *before* other plugins that transform your modules — this is to prevent other plugins from making changes that break the CommonJS detection.
 
 
 ### Peer dependencies
@@ -92,7 +92,7 @@ Here is the config file:
 
 ```js
 // rollup.config.js
-import resolve from 'rollup-plugin-node-resolve';
+import resolve from '@rollup/plugin-node-resolve';
 
 export default {
   input: 'src/main.js',
@@ -111,7 +111,7 @@ export default {
 };
 ```
 
-Voila, `lodash` will now be treated as external, and not be bundled with your library.
+Voilà, `lodash` will now be treated as external, and not be bundled with your library.
 
 The `external` key accepts either an array of module names, or a function which takes the module name and returns true if it should be treated as external. For example:
 
@@ -135,18 +135,18 @@ The array form of `external` does not handle wildcards, so this import will only
 
 Many developers use [Babel](https://babeljs.io/) in their projects in order to use the latest JavaScript features that aren't yet supported by browsers and Node.js.
 
-The easiest way to use both Babel and Rollup is with [rollup-plugin-babel](https://github.com/rollup/rollup-plugin-babel). First, install the plugin:
+The easiest way to use both Babel and Rollup is with [@rollup/plugin-babel](https://github.com/rollup/plugins/tree/master/packages/babel). First, install the plugin:
 
-```console
-npm i -D rollup-plugin-babel rollup-plugin-node-resolve
+```
+npm i -D @rollup/plugin-babel @rollup/plugin-node-resolve
 ```
 
 Add it to `rollup.config.js`:
 
 ```js
 // rollup.config.js
-import resolve from 'rollup-plugin-node-resolve';
-import babel from 'rollup-plugin-babel';
+import resolve from '@rollup/plugin-node-resolve';
+import babel from '@rollup/plugin-babel';
 
 export default {
   input: 'src/main.js',
@@ -156,14 +156,12 @@ export default {
   },
   plugins: [
     resolve(),
-    babel({
-      exclude: 'node_modules/**' // only transpile our source code
-    })
+    babel({ babelHelpers: 'bundled' })
   ]
 };
 ```
 
-Before Babel will actually compile your code, it needs to be configured. Create a new file, `src/.babelrc`:
+Before Babel will actually compile your code, it needs to be configured. Create a new file, `src/.babelrc.json`:
 
 ```json
 {
@@ -173,9 +171,9 @@ Before Babel will actually compile your code, it needs to be configured. Create 
 }
 ```
 
-There are a few unusual elements to this setup. First, we're setting `"modules": false`, otherwise Babel will convert our modules to CommonJS before Rollup gets a chance to do its thing, causing it to fail.
+There are a few unusual elements to this setup. First, we're setting "modules": false, otherwise Babel will convert our modules to CommonJS before Rollup gets a chance to do its thing, causing it to fail.
 
-Secondly, we're putting our `.babelrc` file in `src`, rather than the project root. This allows us to have a different `.babelrc` for things like tests, if we need that later – it's generally a good idea to have separate configuration for separate tasks.
+Secondly, we're putting our `.babelrc.json` file in `src`, rather than the project root. This allows us to have a different `.babelrc.json` for things like tests, if we need that later – See the [Babel documentation](https://babeljs.io/docs/en/config-files#project-wide-configuration) for more information on both project wide and file relative configuration. 
 
 Now, before we run rollup, we need to install
 [`babel-core`](https://babeljs.io/docs/en/babel-core)
@@ -183,7 +181,7 @@ and the
 [`env`](https://babeljs.io/docs/en/babel-preset-env)
 preset:
 
-```console
+```
 npm i -D @babel/core @babel/preset-env
 ```
 
@@ -216,12 +214,12 @@ module.exports = main;
 
 Rollup returns Promises which are understood by gulp so integration is relatively painless.
 
-The syntax is very similar to the configuration file, but the properties are split across two different operations corresponding to the [JavaScript API](guide/en#javascript-api):
+The syntax is very similar to the configuration file, but the properties are split across two different operations corresponding to the [JavaScript API](guide/en/#javascript-api):
 
 ```js
 const gulp = require('gulp');
 const rollup = require('rollup');
-const rollupTypescript = require('rollup-plugin-typescript');
+const rollupTypescript = require('@rollup/plugin-typescript');
 
 gulp.task('build', () => {
   return rollup.rollup({
@@ -245,7 +243,7 @@ You may also use the `async/await` syntax:
 ```js
 const gulp = require('gulp');
 const rollup = require('rollup');
-const rollupTypescript = require('rollup-plugin-typescript');
+const rollupTypescript = require('@rollup/plugin-typescript');
 
 gulp.task('build', async function () {
   const bundle = await rollup.rollup({

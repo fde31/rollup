@@ -1,25 +1,32 @@
 import MagicString from 'magic-string';
 import { RenderOptions, renderStatementList } from '../../utils/renderHelpers';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
+import { HasEffectsContext, InclusionContext } from '../ExecutionContext';
 import * as NodeType from './NodeType';
-import { NodeBase, StatementNode } from './shared/Node';
+import { IncludeChildren, NodeBase, StatementNode } from './shared/Node';
 
 export default class Program extends NodeBase {
-	type: NodeType.tProgram;
-	body: StatementNode[];
-	sourceType: 'module';
+	body!: StatementNode[];
+	sourceType!: 'module';
+	type!: NodeType.tProgram;
 
-	hasEffects(options: ExecutionPathOptions) {
+	private hasCachedEffect = false;
+
+	hasEffects(context: HasEffectsContext) {
+		// We are caching here to later more efficiently identify side-effect-free modules
+		if (this.hasCachedEffect) return true;
 		for (const node of this.body) {
-			if (node.hasEffects(options)) return true;
+			if (node.hasEffects(context)) {
+				return (this.hasCachedEffect = true);
+			}
 		}
+		return false;
 	}
 
-	include(includeAllChildrenRecursively: boolean) {
+	include(context: InclusionContext, includeChildrenRecursively: IncludeChildren) {
 		this.included = true;
 		for (const node of this.body) {
-			if (includeAllChildrenRecursively || node.shouldBeIncluded()) {
-				node.include(includeAllChildrenRecursively);
+			if (includeChildrenRecursively || node.shouldBeIncluded(context)) {
+				node.include(context, includeChildrenRecursively);
 			}
 		}
 	}

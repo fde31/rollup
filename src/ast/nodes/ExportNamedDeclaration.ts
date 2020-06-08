@@ -1,7 +1,6 @@
 import MagicString from 'magic-string';
-import { BLANK } from '../../utils/blank';
 import { NodeRenderOptions, RenderOptions } from '../../utils/renderHelpers';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
+import { HasEffectsContext } from '../ExecutionContext';
 import ClassDeclaration from './ClassDeclaration';
 import ExportSpecifier from './ExportSpecifier';
 import FunctionDeclaration from './FunctionDeclaration';
@@ -11,33 +10,32 @@ import { Node, NodeBase } from './shared/Node';
 import VariableDeclaration from './VariableDeclaration';
 
 export default class ExportNamedDeclaration extends NodeBase {
-	type: NodeType.tExportNamedDeclaration;
-	declaration: FunctionDeclaration | ClassDeclaration | VariableDeclaration | null;
-	specifiers: ExportSpecifier[];
-	source: Literal<string> | null;
-
-	needsBoundaries: true;
+	declaration!: FunctionDeclaration | ClassDeclaration | VariableDeclaration | null;
+	needsBoundaries!: true;
+	source!: Literal<string> | null;
+	specifiers!: ExportSpecifier[];
+	type!: NodeType.tExportNamedDeclaration;
 
 	bind() {
 		// Do not bind specifiers
 		if (this.declaration !== null) this.declaration.bind();
 	}
 
-	hasEffects(options: ExecutionPathOptions) {
-		return this.declaration && this.declaration.hasEffects(options);
+	hasEffects(context: HasEffectsContext) {
+		return this.declaration !== null && this.declaration.hasEffects(context);
 	}
 
 	initialise() {
-		this.included = false;
 		this.context.addExport(this);
 	}
 
-	render(code: MagicString, options: RenderOptions, { start, end }: NodeRenderOptions = BLANK) {
+	render(code: MagicString, options: RenderOptions, nodeRenderOptions?: NodeRenderOptions) {
+		const { start, end } = nodeRenderOptions as { end: number; start: number };
 		if (this.declaration === null) {
 			code.remove(start, end);
 		} else {
 			code.remove(this.start, this.declaration.start);
-			(<Node>this.declaration).render(code, options, { start, end });
+			(this.declaration as Node).render(code, options, { start, end });
 		}
 	}
 }

@@ -1,82 +1,79 @@
 import MagicString from 'magic-string';
 import { RenderOptions } from '../../utils/renderHelpers';
-import CallOptions from '../CallOptions';
+import { CallOptions, NO_ARGS } from '../CallOptions';
 import { DeoptimizableEntity } from '../DeoptimizableEntity';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
-import {
-	EMPTY_IMMUTABLE_TRACKER,
-	ImmutableEntityPathTracker
-} from '../utils/ImmutableEntityPathTracker';
+import { HasEffectsContext } from '../ExecutionContext';
 import {
 	EMPTY_PATH,
-	LiteralValueOrUnknown,
 	ObjectPath,
-	UNKNOWN_EXPRESSION,
-	UNKNOWN_KEY,
-	UNKNOWN_VALUE
-} from '../values';
+	PathTracker,
+	SHARED_RECURSION_TRACKER,
+	UnknownKey
+} from '../utils/PathTracker';
+import { LiteralValueOrUnknown, UNKNOWN_EXPRESSION } from '../values';
 import * as NodeType from './NodeType';
 import { ExpressionEntity } from './shared/Expression';
 import { ExpressionNode, NodeBase } from './shared/Node';
 
 export default class Property extends NodeBase implements DeoptimizableEntity {
-	type: NodeType.tProperty;
-	key: ExpressionNode;
-	value: ExpressionNode;
-	kind: 'init' | 'get' | 'set';
-	method: boolean;
-	shorthand: boolean;
-	computed: boolean;
+	computed!: boolean;
+	key!: ExpressionNode;
+	kind!: 'init' | 'get' | 'set';
+	method!: boolean;
+	shorthand!: boolean;
+	type!: NodeType.tProperty;
+	value!: ExpressionNode;
 
-	private accessorCallOptions: CallOptions;
-	private returnExpression: ExpressionEntity | null;
+	private accessorCallOptions!: CallOptions;
 	private declarationInit: ExpressionEntity | null = null;
+	private returnExpression: ExpressionEntity | null = null;
 
 	bind() {
 		super.bind();
-		if (this.kind === 'get' && this.returnExpression === null) this.updateReturnExpression();
+		if (this.kind === 'get') {
+			// ensure the returnExpression is set for the tree-shaking passes
+			this.getReturnExpression();
+		}
 		if (this.declarationInit !== null) {
-			this.declarationInit.deoptimizePath([UNKNOWN_KEY, UNKNOWN_KEY]);
+			this.declarationInit.deoptimizePath([UnknownKey, UnknownKey]);
 		}
 	}
 
 	declare(kind: string, init: ExpressionEntity) {
 		this.declarationInit = init;
-		this.value.declare(kind, UNKNOWN_EXPRESSION);
+		return this.value.declare(kind, UNKNOWN_EXPRESSION);
 	}
 
-	deoptimizeCache() {
-		// As getter properties directly receive their values from function expressions that always
-		// have a fixed return value, there is no known situation where a getter is deoptimized.
-		throw new Error('Unexpected deoptimization');
+	// As getter properties directly receive their values from function expressions that always
+	// have a fixed return value, there is no known situation where a getter is deoptimized.
+	deoptimizeCache(): void {}
+
+	deoptimizePath(path: ObjectPath) {
+		if (this.kind === 'get') {
+			this.getReturnExpression().deoptimizePath(path);
+		} else {
+			this.value.deoptimizePath(path);
+		}
 	}
 
 	getLiteralValueAtPath(
 		path: ObjectPath,
-		recursionTracker: ImmutableEntityPathTracker,
+		recursionTracker: PathTracker,
 		origin: DeoptimizableEntity
 	): LiteralValueOrUnknown {
-		if (this.kind === 'set') {
-			return UNKNOWN_VALUE;
-		}
 		if (this.kind === 'get') {
-			if (this.returnExpression === null) this.updateReturnExpression();
-			return this.returnExpression.getLiteralValueAtPath(path, recursionTracker, origin);
+			return this.getReturnExpression().getLiteralValueAtPath(path, recursionTracker, origin);
 		}
 		return this.value.getLiteralValueAtPath(path, recursionTracker, origin);
 	}
 
 	getReturnExpressionWhenCalledAtPath(
 		path: ObjectPath,
-		recursionTracker: ImmutableEntityPathTracker,
+		recursionTracker: PathTracker,
 		origin: DeoptimizableEntity
 	): ExpressionEntity {
-		if (this.kind === 'set') {
-			return UNKNOWN_EXPRESSION;
-		}
 		if (this.kind === 'get') {
-			if (this.returnExpression === null) this.updateReturnExpression();
-			return this.returnExpression.getReturnExpressionWhenCalledAtPath(
+			return this.getReturnExpression().getReturnExpressionWhenCalledAtPath(
 				path,
 				recursionTracker,
 				origin
@@ -85,70 +82,61 @@ export default class Property extends NodeBase implements DeoptimizableEntity {
 		return this.value.getReturnExpressionWhenCalledAtPath(path, recursionTracker, origin);
 	}
 
-	hasEffects(options: ExecutionPathOptions): boolean {
-		return this.key.hasEffects(options) || this.value.hasEffects(options);
+	hasEffects(context: HasEffectsContext): boolean {
+		return this.key.hasEffects(context) || this.value.hasEffects(context);
 	}
 
-	hasEffectsWhenAccessedAtPath(path: ObjectPath, options: ExecutionPathOptions): boolean {
+	hasEffectsWhenAccessedAtPath(path: ObjectPath, context: HasEffectsContext): boolean {
 		if (this.kind === 'get') {
+			const trackedExpressions = context.accessed.getEntities(path);
+			if (trackedExpressions.has(this)) return false;
+			trackedExpressions.add(this);
 			return (
-				this.value.hasEffectsWhenCalledAtPath(
-					EMPTY_PATH,
-					this.accessorCallOptions,
-					options.getHasEffectsWhenCalledOptions()
-				) ||
-				(path.length > 0 && this.returnExpression.hasEffectsWhenAccessedAtPath(path, options))
+				this.value.hasEffectsWhenCalledAtPath(EMPTY_PATH, this.accessorCallOptions, context) ||
+				(path.length > 0 && this.returnExpression!.hasEffectsWhenAccessedAtPath(path, context))
 			);
 		}
-		return this.value.hasEffectsWhenAccessedAtPath(path, options);
+		return this.value.hasEffectsWhenAccessedAtPath(path, context);
 	}
 
-	hasEffectsWhenAssignedAtPath(path: ObjectPath, options: ExecutionPathOptions): boolean {
+	hasEffectsWhenAssignedAtPath(path: ObjectPath, context: HasEffectsContext): boolean {
 		if (this.kind === 'get') {
-			return path.length === 0 || this.returnExpression.hasEffectsWhenAssignedAtPath(path, options);
+			const trackedExpressions = context.assigned.getEntities(path);
+			if (trackedExpressions.has(this)) return false;
+			trackedExpressions.add(this);
+			return this.returnExpression!.hasEffectsWhenAssignedAtPath(path, context);
 		}
 		if (this.kind === 'set') {
-			return (
-				path.length > 0 ||
-				this.value.hasEffectsWhenCalledAtPath(
-					EMPTY_PATH,
-					this.accessorCallOptions,
-					options.getHasEffectsWhenCalledOptions()
-				)
-			);
+			const trackedExpressions = context.assigned.getEntities(path);
+			if (trackedExpressions.has(this)) return false;
+			trackedExpressions.add(this);
+			return this.value.hasEffectsWhenCalledAtPath(EMPTY_PATH, this.accessorCallOptions, context);
 		}
-		return this.value.hasEffectsWhenAssignedAtPath(path, options);
+		return this.value.hasEffectsWhenAssignedAtPath(path, context);
 	}
 
 	hasEffectsWhenCalledAtPath(
 		path: ObjectPath,
 		callOptions: CallOptions,
-		options: ExecutionPathOptions
+		context: HasEffectsContext
 	) {
 		if (this.kind === 'get') {
-			return this.returnExpression.hasEffectsWhenCalledAtPath(path, callOptions, options);
+			const trackedExpressions = (callOptions.withNew
+				? context.instantiated
+				: context.called
+			).getEntities(path, callOptions);
+			if (trackedExpressions.has(this)) return false;
+			trackedExpressions.add(this);
+			return this.returnExpression!.hasEffectsWhenCalledAtPath(path, callOptions, context);
 		}
-		return this.value.hasEffectsWhenCalledAtPath(path, callOptions, options);
+		return this.value.hasEffectsWhenCalledAtPath(path, callOptions, context);
 	}
 
 	initialise() {
-		this.included = false;
-		this.returnExpression = null;
-		this.accessorCallOptions = CallOptions.create({
-			withNew: false,
-			callIdentifier: this
-		});
-	}
-
-	deoptimizePath(path: ObjectPath) {
-		if (this.kind === 'get') {
-			if (path.length > 0) {
-				if (this.returnExpression === null) this.updateReturnExpression();
-				this.returnExpression.deoptimizePath(path);
-			}
-		} else if (this.kind !== 'set') {
-			this.value.deoptimizePath(path);
-		}
+		this.accessorCallOptions = {
+			args: NO_ARGS,
+			withNew: false
+		};
 	}
 
 	render(code: MagicString, options: RenderOptions) {
@@ -158,12 +146,15 @@ export default class Property extends NodeBase implements DeoptimizableEntity {
 		this.value.render(code, options, { isShorthandProperty: this.shorthand });
 	}
 
-	private updateReturnExpression() {
-		this.returnExpression = UNKNOWN_EXPRESSION;
-		this.returnExpression = this.value.getReturnExpressionWhenCalledAtPath(
-			EMPTY_PATH,
-			EMPTY_IMMUTABLE_TRACKER,
-			this
-		);
+	private getReturnExpression(): ExpressionEntity {
+		if (this.returnExpression === null) {
+			this.returnExpression = UNKNOWN_EXPRESSION;
+			return (this.returnExpression = this.value.getReturnExpressionWhenCalledAtPath(
+				EMPTY_PATH,
+				SHARED_RECURSION_TRACKER,
+				this
+			));
+		}
+		return this.returnExpression;
 	}
 }

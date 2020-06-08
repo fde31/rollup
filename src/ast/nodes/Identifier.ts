@@ -1,33 +1,37 @@
 import isReference from 'is-reference';
 import MagicString from 'magic-string';
+import { NormalizedTreeshakingOptions } from '../../rollup/types';
 import { BLANK } from '../../utils/blank';
 import { NodeRenderOptions, RenderOptions } from '../../utils/renderHelpers';
-import CallOptions from '../CallOptions';
+import { CallOptions } from '../CallOptions';
 import { DeoptimizableEntity } from '../DeoptimizableEntity';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
+import { HasEffectsContext, InclusionContext } from '../ExecutionContext';
 import FunctionScope from '../scopes/FunctionScope';
-import { ImmutableEntityPathTracker } from '../utils/ImmutableEntityPathTracker';
-import { LiteralValueOrUnknown, ObjectPath, UNKNOWN_EXPRESSION, UNKNOWN_VALUE } from '../values';
+import { EMPTY_PATH, ObjectPath, PathTracker } from '../utils/PathTracker';
+import { LiteralValueOrUnknown } from '../values';
+import GlobalVariable from '../variables/GlobalVariable';
 import LocalVariable from '../variables/LocalVariable';
 import Variable from '../variables/Variable';
 import * as NodeType from './NodeType';
 import { ExpressionEntity } from './shared/Expression';
-import { Node, NodeBase } from './shared/Node';
+import { ExpressionNode, NodeBase } from './shared/Node';
 import { PatternNode } from './shared/Pattern';
+import SpreadElement from './SpreadElement';
 
-export function isIdentifier(node: Node): node is Identifier {
-	return node.type === NodeType.Identifier;
-}
+export type IdentifierWithVariable = Identifier & { variable: Variable };
 
 export default class Identifier extends NodeBase implements PatternNode {
-	type: NodeType.tIdentifier;
-	name: string;
+	name!: string;
+	type!: NodeType.tIdentifier;
 
-	variable: Variable;
-	private bound: boolean;
+	variable: Variable | null = null;
+	private bound = false;
 
-	addExportedVariables(variables: Variable[]): void {
-		if (this.variable.exportName) {
+	addExportedVariables(
+		variables: Variable[],
+		exportNamesByVariable: Map<Variable, string[]>
+	): void {
+		if (this.variable !== null && exportNamesByVariable.has(this.variable)) {
 			variables.push(this.variable);
 		}
 	}
@@ -35,77 +39,95 @@ export default class Identifier extends NodeBase implements PatternNode {
 	bind() {
 		if (this.bound) return;
 		this.bound = true;
-		if (this.variable === null && isReference(this, this.parent)) {
+		if (this.variable === null && isReference(this, this.parent as any)) {
 			this.variable = this.scope.findVariable(this.name);
 			this.variable.addReference(this);
 		}
 		if (
 			this.variable !== null &&
-			(<LocalVariable>this.variable).isLocal &&
-			(<LocalVariable>this.variable).additionalInitializers !== null
+			this.variable instanceof LocalVariable &&
+			this.variable.additionalInitializers !== null
 		) {
-			(<LocalVariable>this.variable).consolidateInitializers();
+			this.variable.consolidateInitializers();
 		}
 	}
 
 	declare(kind: string, init: ExpressionEntity) {
+		let variable: LocalVariable;
 		switch (kind) {
 			case 'var':
+				variable = this.scope.addDeclaration(this, this.context, init, true);
+				break;
 			case 'function':
-				this.variable = this.scope.addDeclaration(this, this.context, init, true);
+				variable = this.scope.addDeclaration(this, this.context, init, 'function');
 				break;
 			case 'let':
 			case 'const':
 			case 'class':
-				this.variable = this.scope.addDeclaration(this, this.context, init, false);
+				variable = this.scope.addDeclaration(this, this.context, init, false);
 				break;
 			case 'parameter':
-				this.variable = (<FunctionScope>this.scope).addParameterDeclaration(this);
+				variable = (this.scope as FunctionScope).addParameterDeclaration(this);
 				break;
+			/* istanbul ignore next */
 			default:
-				throw new Error(`Unexpected identifier kind ${kind}.`);
+				/* istanbul ignore next */
+				throw new Error(`Internal Error: Unexpected identifier kind ${kind}.`);
 		}
+		return [(this.variable = variable)];
+	}
+
+	deoptimizePath(path: ObjectPath) {
+		if (!this.bound) this.bind();
+		if (path.length === 0 && !this.scope.contains(this.name)) {
+			this.disallowImportReassignment();
+		}
+		this.variable!.deoptimizePath(path);
 	}
 
 	getLiteralValueAtPath(
 		path: ObjectPath,
-		recursionTracker: ImmutableEntityPathTracker,
+		recursionTracker: PathTracker,
 		origin: DeoptimizableEntity
 	): LiteralValueOrUnknown {
-		if (this.variable !== null) {
-			return this.variable.getLiteralValueAtPath(path, recursionTracker, origin);
-		}
-		return UNKNOWN_VALUE;
+		if (!this.bound) this.bind();
+		return this.variable!.getLiteralValueAtPath(path, recursionTracker, origin);
 	}
 
 	getReturnExpressionWhenCalledAtPath(
 		path: ObjectPath,
-		recursionTracker: ImmutableEntityPathTracker,
+		recursionTracker: PathTracker,
 		origin: DeoptimizableEntity
 	) {
-		if (this.variable !== null) {
-			return this.variable.getReturnExpressionWhenCalledAtPath(path, recursionTracker, origin);
-		}
-		return UNKNOWN_EXPRESSION;
+		if (!this.bound) this.bind();
+		return this.variable!.getReturnExpressionWhenCalledAtPath(path, recursionTracker, origin);
 	}
 
-	hasEffectsWhenAccessedAtPath(path: ObjectPath, options: ExecutionPathOptions): boolean {
-		return this.variable && this.variable.hasEffectsWhenAccessedAtPath(path, options);
+	hasEffects(): boolean {
+		return (
+			(this.context.options.treeshake as NormalizedTreeshakingOptions).unknownGlobalSideEffects &&
+			this.variable instanceof GlobalVariable &&
+			this.variable.hasEffectsWhenAccessedAtPath(EMPTY_PATH)
+		);
 	}
 
-	hasEffectsWhenAssignedAtPath(path: ObjectPath, options: ExecutionPathOptions): boolean {
-		return !this.variable || this.variable.hasEffectsWhenAssignedAtPath(path, options);
+	hasEffectsWhenAccessedAtPath(path: ObjectPath, context: HasEffectsContext): boolean {
+		return this.variable !== null && this.variable.hasEffectsWhenAccessedAtPath(path, context);
+	}
+
+	hasEffectsWhenAssignedAtPath(path: ObjectPath, context: HasEffectsContext): boolean {
+		return !this.variable || this.variable.hasEffectsWhenAssignedAtPath(path, context);
 	}
 
 	hasEffectsWhenCalledAtPath(
 		path: ObjectPath,
 		callOptions: CallOptions,
-		options: ExecutionPathOptions
+		context: HasEffectsContext
 	) {
-		return !this.variable || this.variable.hasEffectsWhenCalledAtPath(path, callOptions, options);
+		return !this.variable || this.variable.hasEffectsWhenCalledAtPath(path, callOptions, context);
 	}
 
-	include(_includeAllChildrenRecursively: boolean) {
+	include() {
 		if (!this.included) {
 			this.included = true;
 			if (this.variable !== null) {
@@ -114,27 +136,8 @@ export default class Identifier extends NodeBase implements PatternNode {
 		}
 	}
 
-	initialise() {
-		this.included = false;
-		this.bound = false;
-		// To avoid later shape mutations
-		if (!this.variable) {
-			this.variable = null;
-		}
-	}
-
-	deoptimizePath(path: ObjectPath) {
-		if (!this.bound) this.bind();
-		if (this.variable !== null) {
-			if (
-				path.length === 0 &&
-				this.name in this.context.importDescriptions &&
-				!this.scope.contains(this.name)
-			) {
-				this.disallowImportReassignment();
-			}
-			this.variable.deoptimizePath(path);
-		}
+	includeCallArguments(context: InclusionContext, args: (ExpressionNode | SpreadElement)[]): void {
+		this.variable!.includeCallArguments(context, args);
 	}
 
 	render(
@@ -147,8 +150,8 @@ export default class Identifier extends NodeBase implements PatternNode {
 
 			if (name !== this.name) {
 				code.overwrite(this.start, this.end, name, {
-					storeName: true,
-					contentOnly: true
+					contentOnly: true,
+					storeName: true
 				});
 				if (isShorthandProperty) {
 					code.prependRight(this.start, `${this.name}: `);
@@ -166,7 +169,7 @@ export default class Identifier extends NodeBase implements PatternNode {
 	}
 
 	private disallowImportReassignment() {
-		this.context.error(
+		return this.context.error(
 			{
 				code: 'ILLEGAL_REASSIGNMENT',
 				message: `Illegal reassignment to import '${this.name}'`

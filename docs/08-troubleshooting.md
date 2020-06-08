@@ -2,7 +2,7 @@
 title: Troubleshooting
 ---
 
-If you get stuck, please try discussing the issue on [the Rollup Gitter](https://gitter.im/rollup/rollup) or posting a question to https://stackoverflow.com/questions/tagged/rollupjs. If you've found a bug, or Rollup can't meet your needs, please try [raising an issue](https://github.com/rollup/rollup/issues). Lastly, you may try contacting [@RollupJS](http://twitter.com/RollupJS) on Twitter.
+If you get stuck, please try discussing the issue on [the Rollup Gitter](https://gitter.im/rollup/rollup) or posting a question to https://stackoverflow.com/questions/tagged/rollupjs. If you've found a bug, or Rollup can't meet your needs, please try [raising an issue](https://github.com/rollup/rollup/issues). Lastly, you may try contacting [@RollupJS](https://twitter.com/RollupJS) on Twitter.
 
 ### Avoiding `eval`
 
@@ -52,7 +52,7 @@ Occasionally you will see an error message like this:
 
 Import declarations must have corresponding export declarations in the imported module. For example, if you have `import a from './a.js'` in a module, and a.js doesn't have an `export default` declaration, or `import {foo} from './b.js'`, and b.js doesn't export `foo`, Rollup cannot bundle the code.
 
-This error frequently occurs with CommonJS modules converted by [rollup-plugin-commonjs](https://github.com/rollup/rollup-plugin-commonjs), which makes a reasonable attempt to generate named exports from the CommonJS code but won't always succeed, because the freewheeling nature of CommonJS is at odds with the rigorous approach we benefit from in JavaScript modules. It can be solved by using the [namedExports](https://github.com/rollup/rollup-plugin-commonjs#custom-named-exports) option, which allows you to manually fill in the information gaps.
+This error frequently occurs with CommonJS modules converted by [@rollup/plugin-commonjs](https://github.com/rollup/plugins/tree/master/packages/commonjs), which makes a reasonable attempt to generate named exports from the CommonJS code but won't always succeed, because the freewheeling nature of CommonJS is at odds with the rigorous approach we benefit from in JavaScript modules. It can be solved by using the [namedExports](https://github.com/rollup/plugins/tree/master/packages/commonjs#custom-named-exports) option, which allows you to manually fill in the information gaps.
 
 
 ### Error: "this is undefined"
@@ -71,13 +71,13 @@ Usually, a plugin will only omit the sourcemap if it (the plugin, not the bundle
 
 ### Warning: "Treating [module] as external dependency"
 
-Rollup will only resolve *relative* module IDs by default. This means that an import statement like this...
+Rollup will only resolve *relative* module IDs by default. This means that an import statement like this…
 
 ```js
 import moment from 'moment';
 ```
 
-...won't result in `moment` being included in your bundle – instead, it will be an external dependency that is required at runtime. If that's what you want, you can suppress this warning with the `external` option, which makes your intentions explicit:
+…won't result in `moment` being included in your bundle – instead, it will be an external dependency that is required at runtime. If that's what you want, you can suppress this warning with the `external` option, which makes your intentions explicit:
 
 ```js
 // rollup.config.js
@@ -89,6 +89,6 @@ export default {
 };
 ```
 
-If you *do* want to include the module in your bundle, you need to tell Rollup how to find it. In most cases, this is a question of using [rollup-plugin-node-resolve](https://github.com/rollup/rollup-plugin-node-resolve).
+If you *do* want to include the module in your bundle, you need to tell Rollup how to find it. In most cases, this is a question of using [@rollup/plugin-node-resolve](https://github.com/rollup/plugins/tree/master/packages/node-resolve).
 
-Some modules, like `events` or `util`, are built in to Node.js. If you want to include those (for example, so that your bundle runs in the browser), you may need to include [rollup-plugin-node-builtins](https://github.com/calvinmetcalf/rollup-plugin-node-builtins).
+Some modules, like `events` or `util`, are built in to Node.js. If you want to include those (for example, so that your bundle runs in the browser), you may need to include [rollup-plugin-node-polyfills](https://github.com/ionic-team/rollup-plugin-node-polyfills).

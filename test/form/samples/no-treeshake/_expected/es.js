@@ -31,4 +31,22 @@ function unusedButIncluded() {
 	}
 }
 
-export { create, getPrototypeOf, quux as strange };
+function test(
+	unusedParam = {
+		prop: function test() {
+			var unused = 1;
+		}
+	}
+) {}
+
+test({
+	prop: function test() {
+		var unused = 1;
+	}
+});
+
+try {
+	const x = 1;
+} catch {}
+
+export { create, getPrototypeOf, quux, quux as strange };

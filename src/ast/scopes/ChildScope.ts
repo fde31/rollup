@@ -1,11 +1,13 @@
-import { NameCollection } from '../../utils/reservedNames';
 import { getSafeName } from '../../utils/safeName';
+import ImportExpression from '../nodes/ImportExpression';
 import { ExpressionEntity } from '../nodes/shared/Expression';
 import Variable from '../variables/Variable';
 import Scope from './Scope';
 
 export default class ChildScope extends Scope {
-	accessedOutsideVariables: { [name: string]: Variable } = Object.create(null);
+	accessedDynamicImports?: Set<ImportExpression>;
+	accessedGlobalVariablesByFormat?: Map<string, Set<string>>;
+	accessedOutsideVariables = new Map<string, Variable>();
 	parent: Scope;
 
 	constructor(parent: Scope) {
@@ -14,49 +16,99 @@ export default class ChildScope extends Scope {
 		parent.children.push(this);
 	}
 
-	addNamespaceMemberAccess(name: string, variable: Variable) {
-		this.accessedOutsideVariables[name] = variable;
+	addAccessedDynamicImport(importExpression: ImportExpression) {
+		(this.accessedDynamicImports || (this.accessedDynamicImports = new Set())).add(
+			importExpression
+		);
 		if (this.parent instanceof ChildScope) {
-			this.parent.addNamespaceMemberAccess(name, variable);
+			this.parent.addAccessedDynamicImport(importExpression);
 		}
+	}
+
+	addAccessedGlobalsByFormat(globalsByFormat: { [format: string]: string[] }) {
+		const accessedGlobalVariablesByFormat =
+			this.accessedGlobalVariablesByFormat || (this.accessedGlobalVariablesByFormat = new Map());
+		for (const format of Object.keys(globalsByFormat)) {
+			let accessedGlobalVariables = accessedGlobalVariablesByFormat.get(format);
+			if (!accessedGlobalVariables) {
+				accessedGlobalVariables = new Set();
+				accessedGlobalVariablesByFormat.set(format, accessedGlobalVariables);
+			}
+			for (const name of globalsByFormat[format]) {
+				accessedGlobalVariables.add(name);
+			}
+		}
+		if (this.parent instanceof ChildScope) {
+			this.parent.addAccessedGlobalsByFormat(globalsByFormat);
+		}
+	}
+
+	addNamespaceMemberAccess(name: string, variable: Variable) {
+		this.accessedOutsideVariables.set(name, variable);
+		(this.parent as ChildScope).addNamespaceMemberAccess(name, variable);
 	}
 
 	addReturnExpression(expression: ExpressionEntity) {
 		this.parent instanceof ChildScope && this.parent.addReturnExpression(expression);
 	}
 
-	contains(name: string): boolean {
-		return name in this.variables || this.parent.contains(name);
-	}
-
-	deconflict(forbiddenNames: NameCollection) {
-		const usedNames: NameCollection = Object.assign(Object.create(null), forbiddenNames);
-		for (const name of Object.keys(this.accessedOutsideVariables)) {
-			const variable = this.accessedOutsideVariables[name];
+	addUsedOutsideNames(
+		usedNames: Set<string>,
+		format: string,
+		exportNamesByVariable: Map<Variable, string[]>
+	): void {
+		for (const variable of this.accessedOutsideVariables.values()) {
 			if (variable.included) {
-				usedNames[variable.getBaseVariableName()] = true;
+				usedNames.add(variable.getBaseVariableName());
+				if (format === 'system' && exportNamesByVariable.has(variable)) {
+					usedNames.add('exports');
+				}
 			}
 		}
-		for (const name of Object.keys(this.variables)) {
-			const variable = this.variables[name];
-			if (variable.included) {
+		const accessedGlobalVariables =
+			this.accessedGlobalVariablesByFormat && this.accessedGlobalVariablesByFormat.get(format);
+		if (accessedGlobalVariables) {
+			for (const name of accessedGlobalVariables) {
+				usedNames.add(name);
+			}
+		}
+	}
+
+	contains(name: string): boolean {
+		return this.variables.has(name) || this.parent.contains(name);
+	}
+
+	deconflict(format: string, exportNamesByVariable: Map<Variable, string[]>) {
+		const usedNames = new Set<string>();
+		this.addUsedOutsideNames(usedNames, format, exportNamesByVariable);
+		if (this.accessedDynamicImports) {
+			for (const importExpression of this.accessedDynamicImports) {
+				if (importExpression.inlineNamespace) {
+					usedNames.add(importExpression.inlineNamespace.getBaseVariableName());
+				}
+			}
+		}
+		for (const [name, variable] of this.variables) {
+			if (variable.included || variable.alwaysRendered) {
 				variable.setSafeName(getSafeName(name, usedNames));
 			}
 		}
 		for (const scope of this.children) {
-			scope.deconflict(forbiddenNames);
+			scope.deconflict(format, exportNamesByVariable);
 		}
 	}
 
 	findLexicalBoundary(): ChildScope {
-		return this.parent instanceof ChildScope ? this.parent.findLexicalBoundary() : this;
+		return (this.parent as ChildScope).findLexicalBoundary();
 	}
 
 	findVariable(name: string): Variable {
-		const knownVariable = this.variables[name] || this.accessedOutsideVariables[name];
+		const knownVariable = this.variables.get(name) || this.accessedOutsideVariables.get(name);
 		if (knownVariable) {
 			return knownVariable;
 		}
-		return (this.accessedOutsideVariables[name] = this.parent.findVariable(name));
+		const variable = this.parent.findVariable(name);
+		this.accessedOutsideVariables.set(name, variable);
+		return variable;
 	}
 }

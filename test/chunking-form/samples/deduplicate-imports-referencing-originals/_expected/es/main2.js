@@ -1,3 +1,3 @@
-import { a as bar } from './generated-chunk.js';
+import { f as foo } from './generated-foo.js';
 
-console.log(bar, bar);
+console.log(foo, foo);

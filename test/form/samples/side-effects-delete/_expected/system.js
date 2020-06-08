@@ -1,4 +1,4 @@
-System.register('myBundle', [], function (exports, module) {
+System.register('myBundle', [], function (exports) {
 	'use strict';
 	return {
 		execute: function () {
@@ -6,7 +6,7 @@ System.register('myBundle', [], function (exports, module) {
 			var x = exports('x', {foo: 'bar'});
 			delete x.foo;
 
-			delete globalVariable.foo;
+			delete globalThis.unknown.foo;
 
 		}
 	};

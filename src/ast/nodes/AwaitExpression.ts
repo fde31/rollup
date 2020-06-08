@@ -1,32 +1,29 @@
-import MagicString from 'magic-string';
-import { RenderOptions } from '../../utils/renderHelpers';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
+import { HasEffectsContext, InclusionContext } from '../ExecutionContext';
 import ArrowFunctionExpression from './ArrowFunctionExpression';
 import * as NodeType from './NodeType';
 import FunctionNode from './shared/FunctionNode';
-import { Node } from './shared/Node';
-import { ExpressionNode, NodeBase } from './shared/Node';
+import { ExpressionNode, IncludeChildren, Node, NodeBase } from './shared/Node';
 
 export default class AwaitExpression extends NodeBase {
-	type: NodeType.tAwaitExpression;
-	argument: ExpressionNode;
+	argument!: ExpressionNode;
+	type!: NodeType.tAwaitExpression;
 
-	include(includeAllChildrenRecursively: boolean) {
-		super.include(includeAllChildrenRecursively);
-		if (!this.context.usesTopLevelAwait) {
-			let parent = this.parent;
-			do {
-				if (parent instanceof FunctionNode || parent instanceof ArrowFunctionExpression) return;
-			} while ((parent = <Node>(<Node>parent).parent));
-			this.context.usesTopLevelAwait = true;
+	hasEffects(context: HasEffectsContext) {
+		return !context.ignore.returnAwaitYield || this.argument.hasEffects(context);
+	}
+
+	include(context: InclusionContext, includeChildrenRecursively: IncludeChildren) {
+		if (!this.included) {
+			this.included = true;
+			checkTopLevelAwait: if (!this.context.usesTopLevelAwait) {
+				let parent = this.parent;
+				do {
+					if (parent instanceof FunctionNode || parent instanceof ArrowFunctionExpression)
+						break checkTopLevelAwait;
+				} while ((parent = (parent as Node).parent as Node));
+				this.context.usesTopLevelAwait = true;
+			}
 		}
-	}
-
-	hasEffects(options: ExecutionPathOptions) {
-		return super.hasEffects(options) || !options.ignoreReturnAwaitYield();
-	}
-
-	render(code: MagicString, options: RenderOptions) {
-		super.render(code, options);
+		this.argument.include(context, includeChildrenRecursively);
 	}
 }

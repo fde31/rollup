@@ -1,5 +1,5 @@
-import { a as d } from './generated-chunk.js';
+import { d as data } from './generated-shared.js';
 
-var main2 = d.map(d => d + 2);
+var main2 = data.map(d => d + 2);
 
 export default main2;

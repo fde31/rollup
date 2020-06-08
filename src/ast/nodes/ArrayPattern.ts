@@ -1,38 +1,34 @@
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
-import { EMPTY_PATH, ObjectPath, UNKNOWN_EXPRESSION } from '../values';
+import { HasEffectsContext } from '../ExecutionContext';
+import { EMPTY_PATH, ObjectPath } from '../utils/PathTracker';
+import { UNKNOWN_EXPRESSION } from '../values';
 import Variable from '../variables/Variable';
 import * as NodeType from './NodeType';
-import { ExpressionEntity } from './shared/Expression';
 import { NodeBase } from './shared/Node';
 import { PatternNode } from './shared/Pattern';
 
 export default class ArrayPattern extends NodeBase implements PatternNode {
-	type: NodeType.tArrayPattern;
-	elements: (PatternNode | null)[];
+	elements!: (PatternNode | null)[];
+	type!: NodeType.tArrayPattern;
 
-	addExportedVariables(variables: Variable[]): void {
+	addExportedVariables(
+		variables: Variable[],
+		exportNamesByVariable: Map<Variable, string[]>
+	): void {
 		for (const element of this.elements) {
 			if (element !== null) {
-				element.addExportedVariables(variables);
+				element.addExportedVariables(variables, exportNamesByVariable);
 			}
 		}
 	}
 
-	declare(kind: string, _init: ExpressionEntity) {
+	declare(kind: string) {
+		const variables = [];
 		for (const element of this.elements) {
 			if (element !== null) {
-				element.declare(kind, UNKNOWN_EXPRESSION);
+				variables.push(...element.declare(kind, UNKNOWN_EXPRESSION));
 			}
 		}
-	}
-
-	hasEffectsWhenAssignedAtPath(path: ObjectPath, options: ExecutionPathOptions) {
-		if (path.length > 0) return true;
-		for (const element of this.elements) {
-			if (element !== null && element.hasEffectsWhenAssignedAtPath(EMPTY_PATH, options))
-				return true;
-		}
-		return false;
+		return variables;
 	}
 
 	deoptimizePath(path: ObjectPath) {
@@ -43,5 +39,14 @@ export default class ArrayPattern extends NodeBase implements PatternNode {
 				}
 			}
 		}
+	}
+
+	hasEffectsWhenAssignedAtPath(path: ObjectPath, context: HasEffectsContext) {
+		if (path.length > 0) return true;
+		for (const element of this.elements) {
+			if (element !== null && element.hasEffectsWhenAssignedAtPath(EMPTY_PATH, context))
+				return true;
+		}
+		return false;
 	}
 }

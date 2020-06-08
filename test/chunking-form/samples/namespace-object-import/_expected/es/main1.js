@@ -1,4 +1,4 @@
-import { a, b as main2 } from './generated-main2.js';
+import { a, m as main2 } from './generated-main2.js';
 
 console.log(a);
 

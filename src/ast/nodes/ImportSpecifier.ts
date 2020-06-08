@@ -1,9 +1,9 @@
 import Identifier from './Identifier';
 import * as NodeType from './NodeType';
-import { Node } from './shared/Node';
+import { NodeBase } from './shared/Node';
 
-export default interface ImportSpecifier extends Node {
-	type: NodeType.tImportSpecifier;
-	local: Identifier;
-	imported: Identifier;
+export default class ImportSpecifier extends NodeBase {
+	imported!: Identifier;
+	local!: Identifier;
+	type!: NodeType.tImportSpecifier;
 }

@@ -1,29 +1,26 @@
 import ExternalModule from '../../ExternalModule';
 import Module from '../../Module';
-import CallOptions from '../CallOptions';
+import { CallOptions } from '../CallOptions';
 import { DeoptimizableEntity } from '../DeoptimizableEntity';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
+import { HasEffectsContext, InclusionContext } from '../ExecutionContext';
 import Identifier from '../nodes/Identifier';
 import { ExpressionEntity } from '../nodes/shared/Expression';
-import { ImmutableEntityPathTracker } from '../utils/ImmutableEntityPathTracker';
-import { LiteralValueOrUnknown, ObjectPath, UNKNOWN_EXPRESSION, UNKNOWN_VALUE } from '../values';
+import { ExpressionNode } from '../nodes/shared/Node';
+import SpreadElement from '../nodes/SpreadElement';
+import { ObjectPath, PathTracker } from '../utils/PathTracker';
+import { LiteralValueOrUnknown, UnknownValue, UNKNOWN_EXPRESSION } from '../values';
 
 export default class Variable implements ExpressionEntity {
-	name: string;
-	renderName: string | null = null;
-	renderBaseName: string | null = null;
-	isExternal?: boolean;
-	isDefault?: boolean;
+	alwaysRendered = false;
+	included = false;
+	isId = false;
+	// both NamespaceVariable and ExternalVariable can be namespaces
 	isNamespace?: boolean;
-	module: Module | ExternalModule | null;
-
-	// Not initialised during construction
-	exportName: string | null = null;
-	safeExportName: string | null = null;
-	included: boolean = false;
-	isId: boolean = false;
-	reexported: boolean = false;
-	isReassigned: boolean = false;
+	isReassigned = false;
+	module?: Module | ExternalModule;
+	name: string;
+	renderBaseName: string | null = null;
+	renderName: string | null = null;
 
 	constructor(name: string) {
 		this.name = name;
@@ -35,8 +32,18 @@ export default class Variable implements ExpressionEntity {
 	 */
 	addReference(_identifier: Identifier) {}
 
+	deoptimizePath(_path: ObjectPath) {}
+
 	getBaseVariableName(): string {
 		return this.renderBaseName || this.renderName || this.name;
+	}
+
+	getLiteralValueAtPath(
+		_path: ObjectPath,
+		_recursionTracker: PathTracker,
+		_origin: DeoptimizableEntity
+	): LiteralValueOrUnknown {
+		return UnknownValue;
 	}
 
 	getName(): string {
@@ -44,34 +51,26 @@ export default class Variable implements ExpressionEntity {
 		return this.renderBaseName ? `${this.renderBaseName}.${name}` : name;
 	}
 
-	getLiteralValueAtPath(
-		_path: ObjectPath,
-		_recursionTracker: ImmutableEntityPathTracker,
-		_origin: DeoptimizableEntity
-	): LiteralValueOrUnknown {
-		return UNKNOWN_VALUE;
-	}
-
 	getReturnExpressionWhenCalledAtPath(
 		_path: ObjectPath,
-		_recursionTracker: ImmutableEntityPathTracker,
+		_recursionTracker: PathTracker,
 		_origin: DeoptimizableEntity
 	): ExpressionEntity {
 		return UNKNOWN_EXPRESSION;
 	}
 
-	hasEffectsWhenAccessedAtPath(path: ObjectPath, _options: ExecutionPathOptions) {
+	hasEffectsWhenAccessedAtPath(path: ObjectPath, _context: HasEffectsContext) {
 		return path.length > 0;
 	}
 
-	hasEffectsWhenAssignedAtPath(_path: ObjectPath, _options: ExecutionPathOptions) {
+	hasEffectsWhenAssignedAtPath(_path: ObjectPath, _context: HasEffectsContext) {
 		return true;
 	}
 
 	hasEffectsWhenCalledAtPath(
 		_path: ObjectPath,
 		_callOptions: CallOptions,
-		_options: ExecutionPathOptions
+		_context: HasEffectsContext
 	) {
 		return true;
 	}
@@ -86,7 +85,13 @@ export default class Variable implements ExpressionEntity {
 		this.included = true;
 	}
 
-	deoptimizePath(_path: ObjectPath) {}
+	includeCallArguments(context: InclusionContext, args: (ExpressionNode | SpreadElement)[]): void {
+		for (const arg of args) {
+			arg.include(context, false);
+		}
+	}
+
+	markCalledFromTryStatement() {}
 
 	setRenderNames(baseName: string | null, name: string | null) {
 		this.renderBaseName = baseName;
@@ -95,9 +100,5 @@ export default class Variable implements ExpressionEntity {
 
 	setSafeName(name: string | null) {
 		this.renderName = name;
-	}
-
-	toString() {
-		return this.name;
 	}
 }

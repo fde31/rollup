@@ -1,15 +1,7 @@
 (function (factory) {
 	typeof define === 'function' && define.amd ? define(factory) :
 	factory();
-}(function () { 'use strict';
-
-	/* header 1 */
-
-	/* footer 1 */
-
-	/* header 2 */
-
-	/* footer 2 */
+}((function () { 'use strict';
 
 	/* header 3 */
 
@@ -65,4 +57,4 @@
 	importedUsedFunction();
 	usedNamedFunction();
 
-}));
+})));

@@ -1,5 +1,5 @@
-define(['./generated-chunk.js'], function (__chunk_1) { 'use strict';
+define(['./generated-dep'], function (dep) { 'use strict';
 
-
+	console.log(dep.reexported);
 
 });

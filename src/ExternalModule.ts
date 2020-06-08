@@ -1,47 +1,62 @@
 import ExternalVariable from './ast/variables/ExternalVariable';
-import Graph from './Graph';
-import { OutputOptions } from './rollup/types';
+import { NormalizedInputOptions, NormalizedOutputOptions } from './rollup/types';
 import { makeLegal } from './utils/identifierHelpers';
 import { isAbsolute, normalize, relative } from './utils/path';
 
 export default class ExternalModule {
-	private graph: Graph;
 	chunk: void;
 	declarations: { [name: string]: ExternalVariable };
+	dynamicImporters: string[] = [];
+	execIndex: number;
 	exportedVariables: Map<ExternalVariable, string>;
 	exportsNames = false;
-	exportsNamespace: boolean = false;
+	exportsNamespace = false;
 	id: string;
-	renderPath: string = undefined;
-	renormalizeRenderPath = false;
-	isExternal = true;
-	isEntryPoint = false;
-	variableName: string;
-	mostCommonSuggestion: number = 0;
+	importers: string[] = [];
+	moduleSideEffects: boolean;
+	mostCommonSuggestion = 0;
 	nameSuggestions: { [name: string]: number };
-	reexported: boolean = false;
+	reexported = false;
+	renderPath: string = undefined as any;
+	renormalizeRenderPath = false;
 	used = false;
-	execIndex: number;
+	variableName: string;
 
-	constructor({ graph, id }: { graph: Graph; id: string }) {
-		this.graph = graph;
+	constructor(
+		private readonly options: NormalizedInputOptions,
+		id: string,
+		moduleSideEffects: boolean
+	) {
 		this.id = id;
 		this.execIndex = Infinity;
+		this.moduleSideEffects = moduleSideEffects;
 
 		const parts = id.split(/[\\/]/);
-		this.variableName = makeLegal(parts.pop());
+		this.variableName = makeLegal(parts.pop()!);
 
 		this.nameSuggestions = Object.create(null);
 		this.declarations = Object.create(null);
 		this.exportedVariables = new Map();
 	}
 
-	setRenderPath(options: OutputOptions, inputBase: string) {
-		this.renderPath = '';
-		if (options.paths) {
-			this.renderPath =
-				typeof options.paths === 'function' ? options.paths(this.id) : options.paths[this.id];
+	getVariableForExportName(name: string): ExternalVariable {
+		if (name === '*') {
+			this.exportsNamespace = true;
+		} else if (name !== 'default') {
+			this.exportsNames = true;
 		}
+
+		let declaration = this.declarations[name];
+		if (declaration) return declaration;
+
+		this.declarations[name] = declaration = new ExternalVariable(this, name);
+		this.exportedVariables.set(declaration, name);
+		return declaration;
+	}
+
+	setRenderPath(options: NormalizedOutputOptions, inputBase: string) {
+		this.renderPath =
+			typeof options.paths === 'function' ? options.paths(this.id) : options.paths[this.id];
 		if (!this.renderPath) {
 			if (!isAbsolute(this.id)) {
 				this.renderPath = this.id;
@@ -80,23 +95,11 @@ export default class ExternalModule {
 						.map(name => `'${name}'`)
 						.join(', ')} and '${unused.slice(-1)}' are`;
 
-		this.graph.warn({
+		this.options.onwarn({
 			code: 'UNUSED_EXTERNAL_IMPORT',
-			source: this.id,
+			message: `${names} imported from external module '${this.id}' but never used`,
 			names: unused,
-			message: `${names} imported from external module '${this.id}' but never used`
+			source: this.id
 		});
-	}
-
-	getVariableForExportName(name: string, _isExportAllSearch?: boolean): ExternalVariable {
-		if (name !== 'default' && name !== '*') this.exportsNames = true;
-		if (name === '*') this.exportsNamespace = true;
-
-		let declaration = this.declarations[name];
-		if (declaration) return declaration;
-
-		this.declarations[name] = declaration = new ExternalVariable(this, name);
-		this.exportedVariables.set(declaration, name);
-		return declaration;
 	}
 }

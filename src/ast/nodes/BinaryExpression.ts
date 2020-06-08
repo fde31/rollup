@@ -1,7 +1,13 @@
 import { DeoptimizableEntity } from '../DeoptimizableEntity';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
-import { ImmutableEntityPathTracker } from '../utils/ImmutableEntityPathTracker';
-import { EMPTY_PATH, LiteralValueOrUnknown, ObjectPath, UNKNOWN_VALUE } from '../values';
+import { HasEffectsContext } from '../ExecutionContext';
+import {
+	EMPTY_PATH,
+	ObjectPath,
+	PathTracker,
+	SHARED_RECURSION_TRACKER
+} from '../utils/PathTracker';
+import { LiteralValueOrUnknown, UnknownValue } from '../values';
+import ExpressionStatement from './ExpressionStatement';
 import { LiteralValue } from './Literal';
 import * as NodeType from './NodeType';
 import { ExpressionNode, NodeBase } from './shared/Node';
@@ -9,56 +15,71 @@ import { ExpressionNode, NodeBase } from './shared/Node';
 const binaryOperators: {
 	[operator: string]: (left: LiteralValue, right: LiteralValue) => LiteralValueOrUnknown;
 } = {
-	'==': (left, right) => left == right,
 	'!=': (left, right) => left != right,
-	'===': (left, right) => left === right,
 	'!==': (left, right) => left !== right,
-	'<': (left, right) => left < right,
-	'<=': (left, right) => left <= right,
-	'>': (left, right) => left > right,
-	'>=': (left, right) => left >= right,
-	'<<': (left: any, right: any) => left << right,
-	'>>': (left: any, right: any) => left >> right,
-	'>>>': (left: any, right: any) => left >>> right,
-	'+': (left: any, right: any) => left + right,
-	'-': (left: any, right: any) => left - right,
-	'*': (left: any, right: any) => left * right,
-	'/': (left: any, right: any) => left / right,
 	'%': (left: any, right: any) => left % right,
-	'|': (left: any, right: any) => left | right,
-	'^': (left: any, right: any) => left ^ right,
 	'&': (left: any, right: any) => left & right,
+	'*': (left: any, right: any) => left * right,
 	// At the moment, "**" will be transpiled to Math.pow
 	'**': (left: any, right: any) => left ** right,
-	in: () => UNKNOWN_VALUE,
-	instanceof: () => UNKNOWN_VALUE
+	'+': (left: any, right: any) => left + right,
+	'-': (left: any, right: any) => left - right,
+	'/': (left: any, right: any) => left / right,
+	'<': (left, right) => (left as NonNullable<LiteralValue>) < (right as NonNullable<LiteralValue>),
+	'<<': (left: any, right: any) => left << right,
+	'<=': (left, right) =>
+		(left as NonNullable<LiteralValue>) <= (right as NonNullable<LiteralValue>),
+	'==': (left, right) => left == right,
+	'===': (left, right) => left === right,
+	'>': (left, right) => (left as NonNullable<LiteralValue>) > (right as NonNullable<LiteralValue>),
+	'>=': (left, right) =>
+		(left as NonNullable<LiteralValue>) >= (right as NonNullable<LiteralValue>),
+	'>>': (left: any, right: any) => left >> right,
+	'>>>': (left: any, right: any) => left >>> right,
+	'^': (left: any, right: any) => left ^ right,
+	in: () => UnknownValue,
+	instanceof: () => UnknownValue,
+	'|': (left: any, right: any) => left | right
 };
 
-export default class BinaryExpression extends NodeBase {
-	type: NodeType.tBinaryExpression;
-	left: ExpressionNode;
-	right: ExpressionNode;
-	operator: keyof typeof binaryOperators;
+export default class BinaryExpression extends NodeBase implements DeoptimizableEntity {
+	left!: ExpressionNode;
+	operator!: keyof typeof binaryOperators;
+	right!: ExpressionNode;
+	type!: NodeType.tBinaryExpression;
+
+	deoptimizeCache(): void {}
 
 	getLiteralValueAtPath(
 		path: ObjectPath,
-		recursionTracker: ImmutableEntityPathTracker,
+		recursionTracker: PathTracker,
 		origin: DeoptimizableEntity
 	): LiteralValueOrUnknown {
-		if (path.length > 0) return UNKNOWN_VALUE;
+		if (path.length > 0) return UnknownValue;
 		const leftValue = this.left.getLiteralValueAtPath(EMPTY_PATH, recursionTracker, origin);
-		if (leftValue === UNKNOWN_VALUE) return UNKNOWN_VALUE;
+		if (leftValue === UnknownValue) return UnknownValue;
 
 		const rightValue = this.right.getLiteralValueAtPath(EMPTY_PATH, recursionTracker, origin);
-		if (rightValue === UNKNOWN_VALUE) return UNKNOWN_VALUE;
+		if (rightValue === UnknownValue) return UnknownValue;
 
 		const operatorFn = binaryOperators[this.operator];
-		if (!operatorFn) return UNKNOWN_VALUE;
+		if (!operatorFn) return UnknownValue;
 
-		return operatorFn(<LiteralValue>leftValue, <LiteralValue>rightValue);
+		return operatorFn(leftValue, rightValue);
 	}
 
-	hasEffectsWhenAccessedAtPath(path: ObjectPath, _options: ExecutionPathOptions) {
+	hasEffects(context: HasEffectsContext): boolean {
+		// support some implicit type coercion runtime errors
+		if (
+			this.operator === '+' &&
+			this.parent instanceof ExpressionStatement &&
+			this.left.getLiteralValueAtPath(EMPTY_PATH, SHARED_RECURSION_TRACKER, this) === ''
+		)
+			return true;
+		return super.hasEffects(context);
+	}
+
+	hasEffectsWhenAccessedAtPath(path: ObjectPath) {
 		return path.length > 1;
 	}
 }

@@ -2,44 +2,38 @@ import { AstContext } from '../../Module';
 import Identifier from '../nodes/Identifier';
 import { ExpressionEntity } from '../nodes/shared/Expression';
 import { UNDEFINED_EXPRESSION } from '../values';
-import ArgumentsVariable from '../variables/ArgumentsVariable';
-import ExportDefaultVariable from '../variables/ExportDefaultVariable';
 import LocalVariable from '../variables/LocalVariable';
-import ThisVariable from '../variables/ThisVariable';
 import Variable from '../variables/Variable';
 import ChildScope from './ChildScope';
 
 export default class Scope {
-	variables: {
-		this?: ThisVariable | LocalVariable;
-		default?: ExportDefaultVariable;
-		arguments?: ArgumentsVariable;
-		[name: string]: Variable;
-	} = Object.create(null);
 	children: ChildScope[] = [];
+	variables = new Map<string, Variable>();
 
 	addDeclaration(
 		identifier: Identifier,
 		context: AstContext,
 		init: ExpressionEntity | null = null,
-		_isHoisted: boolean
+		_isHoisted: boolean | 'function'
 	) {
 		const name = identifier.name;
-		if (this.variables[name]) {
-			(<LocalVariable>this.variables[name]).addDeclaration(identifier, init);
+		let variable = this.variables.get(name) as LocalVariable;
+		if (variable) {
+			variable.addDeclaration(identifier, init);
 		} else {
-			this.variables[name] = new LocalVariable(
+			variable = new LocalVariable(
 				identifier.name,
 				identifier,
 				init || UNDEFINED_EXPRESSION,
 				context
 			);
+			this.variables.set(name, variable);
 		}
-		return this.variables[name];
+		return variable;
 	}
 
 	contains(name: string): boolean {
-		return name in this.variables;
+		return this.variables.has(name);
 	}
 
 	findVariable(_name: string): Variable {

@@ -1,7 +1,16 @@
-import './generated-chunk.js';
-import './generated-chunk2.js';
+import './generated-separate.js';
 
-const inlined = import('./generated-chunk.js');
-const separate = import('./generated-chunk2.js');
+var inlined = 'inlined';
+const x = 1;
+console.log('inlined');
 
-export { inlined, separate };
+var inlined$1 = /*#__PURE__*/Object.freeze({
+	__proto__: null,
+	'default': inlined,
+	x: x
+});
+
+const inlined$2 = Promise.resolve().then(function () { return inlined$1; });
+const separate = import('./generated-separate.js');
+
+export { inlined$2 as inlined, separate };

@@ -4,8 +4,13 @@ module.exports = {
 	description: 'default export is not re-exported with export *',
 	error: {
 		code: 'MISSING_EXPORT',
-		message: `'default' is not exported by foo.js`,
+		message: `'default' is not exported by foo.js, imported by main.js`,
 		pos: 7,
+		watchFiles: [
+			path.resolve(__dirname, 'main.js'),
+			path.resolve(__dirname, 'foo.js'),
+			path.resolve(__dirname, 'bar.js')
+		],
 		loc: {
 			file: path.resolve(__dirname, 'main.js'),
 			line: 1,
@@ -17,6 +22,6 @@ module.exports = {
 			2:
 			3: console.log( def );
 		`,
-		url: `https://rollupjs.org/guide/en#error-name-is-not-exported-by-module-`
+		url: `https://rollupjs.org/guide/en/#error-name-is-not-exported-by-module`
 	}
 };

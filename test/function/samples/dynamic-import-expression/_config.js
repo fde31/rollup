@@ -5,7 +5,7 @@ module.exports = {
 	options: {
 		plugins: [
 			{
-				resolveDynamicImport(specifier, parent) {
+				resolveDynamicImport(specifier) {
 					if (typeof specifier !== 'string') {
 						// string literal concatenation
 						if (
@@ -23,7 +23,10 @@ module.exports = {
 			}
 		]
 	},
-	runtimeError(error) {
-		assert.equal("Cannot find module 'x/y'", error.message);
+	exports(exports) {
+		const expectedError = "Cannot find module 'x/y'";
+		return exports.catch(err =>
+			assert.strictEqual(err.message.slice(0, expectedError.length), expectedError)
+		);
 	}
 };

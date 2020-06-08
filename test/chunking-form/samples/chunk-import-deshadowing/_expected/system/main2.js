@@ -1,11 +1,11 @@
-System.register(['./generated-chunk.js'], function (exports, module) {
-  'use strict';
-  return {
-    setters: [function () {}],
-    execute: function () {
+System.register(['./generated-lib.js'], function () {
+	'use strict';
+	return {
+		setters: [function () {}],
+		execute: function () {
 
+			console.log('dep2');
 
-
-    }
-  };
+		}
+	};
 });

@@ -1,18 +1,20 @@
 import ExternalModule from '../ExternalModule';
 import Module from '../Module';
-import { NameCollection } from './reservedNames';
 
-export function visitStaticModuleDependencies(
-	baseModule: Module | ExternalModule,
-	areDependenciesSkipped: (module: Module | ExternalModule) => boolean
-) {
+export function markModuleAndImpureDependenciesAsExecuted(baseModule: Module) {
+	baseModule.isExecuted = true;
 	const modules = [baseModule];
-	const visitedModules: NameCollection = {};
+	const visitedModules = new Set<string>();
 	for (const module of modules) {
-		if (areDependenciesSkipped(module) || module instanceof ExternalModule) continue;
-		for (const dependency of module.dependencies) {
-			if (!visitedModules[dependency.id]) {
-				visitedModules[dependency.id] = true;
+		for (const dependency of [...module.dependencies, ...module.implicitlyLoadedBefore]) {
+			if (
+				!(dependency instanceof ExternalModule) &&
+				!dependency.isExecuted &&
+				(dependency.moduleSideEffects || module.implicitlyLoadedBefore.has(dependency)) &&
+				!visitedModules.has(dependency.id)
+			) {
+				dependency.isExecuted = true;
+				visitedModules.add(dependency.id);
 				modules.push(dependency);
 			}
 		}

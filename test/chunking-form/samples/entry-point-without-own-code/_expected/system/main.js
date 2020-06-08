@@ -1,9 +1,9 @@
-System.register(['./m2.js', './generated-m1.js'], function (exports, module) {
+System.register(['./m2.js', './generated-m1.js'], function () {
 	'use strict';
 	var ms;
 	return {
 		setters: [function () {}, function (module) {
-			ms = module.a;
+			ms = module.m;
 		}],
 		execute: function () {
 

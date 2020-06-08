@@ -12,12 +12,21 @@ exports.loader = loader;
 exports.normaliseOutput = normaliseOutput;
 exports.runTestSuiteWithSamples = runTestSuiteWithSamples;
 exports.assertDirectoriesAreEqual = assertDirectoriesAreEqual;
+exports.assertStderrIncludes = assertStderrIncludes;
+
+function normaliseError(error) {
+	delete error.stack;
+	return Object.assign({}, error, {
+		message: error.message
+	});
+}
 
 function compareError(actual, expected) {
-	delete actual.stack;
-	actual = Object.assign({}, actual, {
-		message: actual.message
-	});
+	actual = normaliseError(actual);
+
+	if (actual.parserError) {
+		actual.parserError = normaliseError(actual.parserError);
+	}
 
 	if (actual.frame) {
 		actual.frame = actual.frame.replace(/\s+$/gm, '');
@@ -52,11 +61,7 @@ function compareWarnings(actual, expected) {
 }
 
 function deindent(str) {
-	return str
-		.slice(1)
-		.replace(/^\t+/gm, '')
-		.replace(/\s+$/gm, '')
-		.trim();
+	return str.slice(1).replace(/^\t+/gm, '').replace(/\s+$/gm, '').trim();
 }
 
 function executeBundle(bundle, require) {
@@ -93,7 +98,7 @@ function loadConfig(configFile) {
 			const dir = path.dirname(configFile);
 			removeOldTest(dir);
 		} else {
-			throw new Error(`Failed to load ${path}: ${err.message}`);
+			throw new Error(`Failed to load ${configFile}: ${err.message}`);
 		}
 	}
 }
@@ -117,6 +122,7 @@ function removeOldTest(dir) {
 }
 
 function loader(modules) {
+	modules = Object.assign(Object.create(null), modules);
 	return {
 		resolveId(id) {
 			return id in modules ? id : null;
@@ -129,10 +135,7 @@ function loader(modules) {
 }
 
 function normaliseOutput(code) {
-	return code
-		.toString()
-		.trim()
-		.replace(/\r\n/g, '\n');
+	return code.toString().trim().replace(/\r\n/g, '\n');
 }
 
 function runTestSuiteWithSamples(suiteName, samplesDir, runTest, onTeardown) {
@@ -140,11 +143,11 @@ function runTestSuiteWithSamples(suiteName, samplesDir, runTest, onTeardown) {
 }
 
 // You can run only or skip certain kinds of tests be appending .only or .skip
-runTestSuiteWithSamples.only = function(suiteName, samplesDir, runTest, onTeardown) {
+runTestSuiteWithSamples.only = function (suiteName, samplesDir, runTest, onTeardown) {
 	describe.only(suiteName, () => runSamples(samplesDir, runTest, onTeardown));
 };
 
-runTestSuiteWithSamples.skip = function(suiteName) {
+runTestSuiteWithSamples.skip = function (suiteName) {
 	describe.skip(suiteName, () => {});
 };
 
@@ -182,9 +185,9 @@ function loadConfigAndRunTest(dir, runTest) {
 	const config = loadConfig(dir + '/_config.js');
 	if (
 		config &&
-		(!config.minNodeVersion ||
-			config.minNodeVersion <= Number(/^v(\d+)/.exec(process.version)[1])) &&
-		(!config.skipIfWindows || process.platform !== 'win32')
+		(!config.skipIfWindows || process.platform !== 'win32') &&
+		(!config.onlyWindows || process.platform === 'win32') &&
+		(!config.minNodeVersion || config.minNodeVersion <= Number(/^v(\d+)/.exec(process.version)[1]))
 	)
 		runTest(dir, config);
 }
@@ -214,4 +217,17 @@ function assertFilesAreEqual(actualFiles, expectedFiles, dirs = []) {
 			`${shortName}: ${expectedFiles[fileName]}`
 		);
 	});
+}
+
+function assertStderrIncludes(stderr, expected) {
+	try {
+		assert.ok(
+			stderr.includes(expected),
+			`Could not find ${JSON.stringify(expected)} in ${JSON.stringify(stderr)}`
+		);
+	} catch (err) {
+		err.actual = stderr;
+		err.expected = expected;
+		throw err;
+	}
 }

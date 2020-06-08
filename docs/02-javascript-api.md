@@ -6,7 +6,9 @@ Rollup provides a JavaScript API which is usable from Node.js. You will rarely n
 
 ### rollup.rollup
 
-The `rollup.rollup` function returns a Promise that resolves to a `bundle` object with various properties and methods shown here:
+The `rollup.rollup` function receives an input options object as parameter and returns a Promise that resolves to a `bundle` object with various properties and methods as shown below. During this step, Rollup will build the module graph and perform tree-shaking, but will not generate any output.
+
+On a `bundle` object, you can call `bundle.generate` multiple times with different output options objects to generate different bundles in-memory. If you directly want to write them to disk, use `bundle.write` instead.
 
 ```javascript
 const rollup = require('rollup');
@@ -21,16 +23,17 @@ async function build() {
 
   console.log(bundle.watchFiles); // an array of file names this bundle depends on
 
-  // generate code
+  // generate output specific code in-memory
+  // you can call this function multiple times on the same bundle object
   const { output } = await bundle.generate(outputOptions);
 
   for (const chunkOrAsset of output) {
-    if (chunkOrAsset.isAsset) {
+    if (chunkOrAsset.type === 'asset') {
       // For assets, this contains
       // {
-      //   isAsset: true,                 // signifies that this is an asset
       //   fileName: string,              // the asset file name
-      //   source: string | Buffer        // the asset source
+      //   source: string | Uint8Array    // the asset source
+      //   type: 'asset'                  // signifies that this is an asset
       // }
       console.log('Asset', chunkOrAsset);
     } else {
@@ -54,6 +57,7 @@ async function build() {
       //     };
       //   },
       //   name: string                   // the name of this chunk as used in naming patterns
+      //   type: 'chunk',                 // signifies that this is a chunk
       // }
       console.log('Chunk', chunkOrAsset.modules);
     }
@@ -66,9 +70,9 @@ async function build() {
 build();
 ```
 
-#### inputOptions
+#### inputOptions object
 
-The `inputOptions` object can contain the following properties (see the [big list of options](guide/en#big-list-of-options) for full details on these):
+The `inputOptions` object can contain the following properties (see the [big list of options](guide/en/#big-list-of-options) for full details on these):
 
 ```js
 const inputOptions = {
@@ -82,7 +86,9 @@ const inputOptions = {
   inlineDynamicImports,
   manualChunks,
   onwarn,
+  preserveEntrySignatures,
   preserveModules,
+  strictDeprecations,
 
   // danger zone
   acorn,
@@ -94,54 +100,56 @@ const inputOptions = {
   treeshake,
 
   // experimental
-  chunkGroupingSize,
   experimentalCacheExpiry,
-  experimentalOptimizeChunks,
-  experimentalTopLevelAwait,
   perf
 };
 ```
 
-#### outputOptions
+#### outputOptions object
 
-The `outputOptions` object can contain the following properties (see the [big list of options](guide/en#big-list-of-options) for full details on these):
+The `outputOptions` object can contain the following properties (see the [big list of options](guide/en/#big-list-of-options) for full details on these):
 
 ```js
 const outputOptions = {
-    // core output options
-    dir,
-    file,
-    format, // required
-    globals,
-    name,
+  // core output options
+  dir,
+  file,
+  format, // required
+  globals,
+  name,
+  plugins,
 
-    // advanced output options
-    assetFileNames,
-    banner,
-    chunkFileNames,
-    compact,
-    entryFileNames,
-    extend,
-    footer,
-    interop,
-    intro,
-    outro,
-    paths,
-    sourcemap,
-    sourcemapExcludeSources,
-    sourcemapFile,
-    sourcemapPathTransform,
+  // advanced output options
+  assetFileNames,
+  banner,
+  chunkFileNames,
+  compact,
+  entryFileNames,
+  extend,
+  externalLiveBindings,
+  footer,
+  hoistTransitiveImports,
+  interop,
+  intro,
+  minifyInternalExports,
+  outro,
+  paths,
+  sourcemap,
+  sourcemapExcludeSources,
+  sourcemapFile,
+  sourcemapPathTransform,
 
-    // danger zone
-    amd,
-    esModule,
-    exports,
-    freeze,
-    indent,
-    namespaceToStringTag,
-    noConflict,
-    preferConst,
-    strict
+  // danger zone
+  amd,
+  esModule,
+  exports,
+  freeze,
+  indent,
+  namespaceToStringTag,
+  noConflict,
+  preferConst,
+  strict,
+  systemNullSetters
 };
 ```
 
@@ -162,7 +170,6 @@ watcher.on('event', event => {
   //   BUNDLE_END   — finished building a bundle
   //   END          — finished building all bundles
   //   ERROR        — encountered an error while bundling
-  //   FATAL        — encountered an unrecoverable error
 });
 
 // stop watching
@@ -178,12 +185,47 @@ const watchOptions = {
   ...inputOptions,
   output: [outputOptions],
   watch: {
+    buildDelay,
     chokidar,
     clearScreen,
+    skipWrite,
     exclude,
     include
   }
 };
 ```
 
-See above for details on `inputOptions` and `outputOptions`, or consult the [big list of options](guide/en#big-list-of-options) for info on `chokidar`, `include` and `exclude`.
+See above for details on `inputOptions` and `outputOptions`, or consult the [big list of options](guide/en/#big-list-of-options) for info on `chokidar`, `include` and `exclude`.
+
+#### Programmatically loading a config file
+
+In order to aid in generating such a config, rollup exposes the helper it uses to load config files in its command line interface via a separate entry-point. This helper receives a resolved `fileName` and optionally an object containing command line parameters:
+
+```js
+const loadConfigFile = require('rollup/dist/loadConfigFile');
+const path = require('path');
+const rollup = require('rollup');
+
+// load the config file next to the current script;
+// the provided config object has the same effect as passing "--format es"
+// on the command line and will override the format of all outputs
+loadConfigFile(path.resolve(__dirname, 'rollup.config.js'), { format: 'es' })
+  .then(async ({options, warnings}) => {
+    // "warnings" wraps the default `onwarn` handler passed by the CLI.
+    // This prints all warnings up to this point:
+    console.log(`We currently have ${warnings.count} warnings`);
+
+    // This prints all deferred warnings
+    warnings.flush();
+    
+    // options is an "inputOptions" object with an additional "output"
+    // property that contains an array of "outputOptions".
+    // The following will generate all outputs and write them to disk the same
+    // way the CLI does it:
+    const bundle = await rollup.rollup(options);
+    await Promise.all(options.output.map(bundle.write));
+ 
+    // You can also pass this directly to "rollup.watch"
+    rollup.watch(options);
+  })
+```

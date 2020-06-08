@@ -1,22 +1,21 @@
-import { AstContext } from '../../Module';
+import Module, { AstContext } from '../../Module';
 import ClassDeclaration from '../nodes/ClassDeclaration';
 import ExportDefaultDeclaration from '../nodes/ExportDefaultDeclaration';
 import FunctionDeclaration from '../nodes/FunctionDeclaration';
-import Identifier from '../nodes/Identifier';
-import * as NodeType from '../nodes/NodeType';
+import Identifier, { IdentifierWithVariable } from '../nodes/Identifier';
 import LocalVariable from './LocalVariable';
+import UndefinedVariable from './UndefinedVariable';
 import Variable from './Variable';
 
-export function isExportDefaultVariable(variable: Variable): variable is ExportDefaultVariable {
-	return variable.isDefault;
-}
-
 export default class ExportDefaultVariable extends LocalVariable {
-	isDefault: true;
-	hasId: boolean;
+	hasId = false;
 
 	// Not initialised during construction
-	private originalId: Identifier | null = null;
+	private originalId: IdentifierWithVariable | null = null;
+	private originalVariableAndDeclarationModules: {
+		modules: Module[];
+		original: Variable;
+	} | null = null;
 
 	constructor(
 		name: string,
@@ -26,14 +25,13 @@ export default class ExportDefaultVariable extends LocalVariable {
 		super(name, exportDefaultDeclaration, exportDefaultDeclaration.declaration, context);
 		const declaration = exportDefaultDeclaration.declaration;
 		if (
-			(declaration.type === NodeType.FunctionDeclaration ||
-				declaration.type === NodeType.ClassDeclaration) &&
-			(<FunctionDeclaration | ClassDeclaration>declaration).id
+			(declaration instanceof FunctionDeclaration || declaration instanceof ClassDeclaration) &&
+			declaration.id
 		) {
 			this.hasId = true;
-			this.originalId = (<FunctionDeclaration | ClassDeclaration>declaration).id;
-		} else if (declaration.type === NodeType.Identifier) {
-			this.originalId = <Identifier>declaration;
+			this.originalId = declaration.id;
+		} else if (declaration instanceof Identifier) {
+			this.originalId = declaration as IdentifierWithVariable;
 		}
 	}
 
@@ -43,39 +41,57 @@ export default class ExportDefaultVariable extends LocalVariable {
 		}
 	}
 
-	getName() {
-		return this.referencesOriginal() ? this.originalId.variable.getName() : super.getName();
-	}
-
-	getOriginalVariable(): Variable | null {
-		return (this.originalId && this.originalId.variable) || null;
-	}
-
-	getOriginalVariableName(): string | null {
+	getAssignedVariableName(): string | null {
 		return (this.originalId && this.originalId.name) || null;
 	}
 
-	referencesOriginal() {
-		return this.originalId && (this.hasId || !this.originalId.variable.isReassigned);
-	}
-
-	setRenderNames(baseName: string | null, name: string | null) {
-		if (this.referencesOriginal()) {
-			this.originalId.variable.setRenderNames(baseName, name);
+	getBaseVariableName(): string {
+		const original = this.getOriginalVariable();
+		if (original === this) {
+			return super.getBaseVariableName();
 		} else {
-			super.setRenderNames(baseName, name);
+			return original.getBaseVariableName();
 		}
 	}
 
-	setSafeName(name: string | null) {
-		if (this.referencesOriginal()) {
-			this.originalId.variable.setSafeName(name);
+	getName() {
+		const original = this.getOriginalVariable();
+		if (original === this) {
+			return super.getName();
 		} else {
-			super.setSafeName(name);
+			return original.getName();
 		}
+	}
+
+	getOriginalVariable(): Variable {
+		return this.getOriginalVariableAndDeclarationModules().original;
+	}
+
+	getOriginalVariableAndDeclarationModules(): { modules: Module[]; original: Variable } {
+		if (this.originalVariableAndDeclarationModules === null) {
+			if (
+				!this.originalId ||
+				(!this.hasId &&
+					(this.originalId.variable.isReassigned ||
+						this.originalId.variable instanceof UndefinedVariable))
+			) {
+				this.originalVariableAndDeclarationModules = { modules: [], original: this };
+			} else {
+				const assignedOriginal = this.originalId.variable;
+				if (assignedOriginal instanceof ExportDefaultVariable) {
+					const { modules, original } = assignedOriginal.getOriginalVariableAndDeclarationModules();
+					this.originalVariableAndDeclarationModules = {
+						modules: modules.concat(this.module),
+						original
+					};
+				} else {
+					this.originalVariableAndDeclarationModules = {
+						modules: [this.module],
+						original: assignedOriginal
+					};
+				}
+			}
+		}
+		return this.originalVariableAndDeclarationModules;
 	}
 }
-
-ExportDefaultVariable.prototype.getBaseVariableName = ExportDefaultVariable.prototype.getName;
-
-ExportDefaultVariable.prototype.isDefault = true;

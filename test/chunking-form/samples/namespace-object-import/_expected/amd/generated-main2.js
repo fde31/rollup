@@ -4,12 +4,13 @@ define(['exports'], function (exports) { 'use strict';
 	var b = 'a';
 
 	var main2 = /*#__PURE__*/Object.freeze({
+		__proto__: null,
 		a: a,
 		b: b
 	});
 
 	exports.a = a;
-	exports.main2 = main2;
 	exports.b = b;
+	exports.main2 = main2;
 
 });

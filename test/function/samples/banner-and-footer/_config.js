@@ -1,8 +1,10 @@
 module.exports = {
 	description: 'adds a banner/footer',
 	options: {
-		banner: '/* this is a banner */',
-		footer: () => Promise.resolve('/* this is a footer */'),
+		output: {
+			banner: '/* this is a banner */',
+			footer: () => Promise.resolve('/* this is a footer */')
+		},
 		plugins: [
 			{
 				banner: '/* first banner */',
@@ -27,6 +29,6 @@ module.exports = {
 	generateError: {
 		code: 'ADDON_ERROR',
 		message:
-			'Could not retrieve banner. Check configuration of Plugin at position 3.\n\tError Message: Could not generate banner.'
+			'Could not retrieve banner. Check configuration of plugin at position 3.\n\tError Message: Could not generate banner.'
 	}
 };

@@ -1,16 +1,20 @@
 import MagicString from 'magic-string';
-import { RenderOptions } from '../../utils/renderHelpers';
-import { getSystemExportStatement } from '../../utils/systemJsRendering';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
-import { EMPTY_PATH, ObjectPath, UNKNOWN_PATH } from '../values';
+import {
+	findFirstOccurrenceOutsideComment,
+	findNonWhiteSpace,
+	RenderOptions
+} from '../../utils/renderHelpers';
+import { getSystemExportFunctionLeft } from '../../utils/systemJsRendering';
+import { HasEffectsContext, InclusionContext } from '../ExecutionContext';
+import { EMPTY_PATH, ObjectPath, UNKNOWN_PATH } from '../utils/PathTracker';
 import Variable from '../variables/Variable';
 import * as NodeType from './NodeType';
-import { ExpressionNode, NodeBase } from './shared/Node';
+import { ExpressionNode, IncludeChildren, NodeBase } from './shared/Node';
 import { PatternNode } from './shared/Pattern';
 
 export default class AssignmentExpression extends NodeBase {
-	type: NodeType.tAssignmentExpression;
-	operator:
+	left!: PatternNode;
+	operator!:
 		| '='
 		| '+='
 		| '-='
@@ -24,49 +28,72 @@ export default class AssignmentExpression extends NodeBase {
 		| '^='
 		| '&='
 		| '**=';
-	left: PatternNode | ExpressionNode;
-	right: ExpressionNode;
+	right!: ExpressionNode;
+	type!: NodeType.tAssignmentExpression;
+	private deoptimized = false;
 
-	bind() {
-		super.bind();
-		this.left.deoptimizePath(EMPTY_PATH);
-		// We cannot propagate mutations of the new binding to the old binding with certainty
-		this.right.deoptimizePath(UNKNOWN_PATH);
-	}
-
-	hasEffects(options: ExecutionPathOptions): boolean {
+	hasEffects(context: HasEffectsContext): boolean {
+		if (!this.deoptimized) this.applyDeoptimizations();
 		return (
-			this.right.hasEffects(options) ||
-			this.left.hasEffects(options) ||
-			this.left.hasEffectsWhenAssignedAtPath(EMPTY_PATH, options)
+			this.right.hasEffects(context) ||
+			this.left.hasEffects(context) ||
+			this.left.hasEffectsWhenAssignedAtPath(EMPTY_PATH, context)
 		);
 	}
 
-	hasEffectsWhenAccessedAtPath(path: ObjectPath, options: ExecutionPathOptions): boolean {
-		return path.length > 0 && this.right.hasEffectsWhenAccessedAtPath(path, options);
+	hasEffectsWhenAccessedAtPath(path: ObjectPath, context: HasEffectsContext): boolean {
+		return path.length > 0 && this.right.hasEffectsWhenAccessedAtPath(path, context);
+	}
+
+	include(context: InclusionContext, includeChildrenRecursively: IncludeChildren): void {
+		if (!this.deoptimized) this.applyDeoptimizations();
+		this.included = true;
+		this.left.include(context, includeChildrenRecursively);
+		this.right.include(context, includeChildrenRecursively);
 	}
 
 	render(code: MagicString, options: RenderOptions) {
 		this.left.render(code, options);
 		this.right.render(code, options);
 		if (options.format === 'system') {
-			if (this.left.variable && this.left.variable.exportName) {
-				code.prependLeft(
-					code.original.indexOf('=', this.left.end) + 1,
-					` exports('${this.left.variable.exportName}',`
+			const exportNames =
+				this.left.variable && options.exportNamesByVariable.get(this.left.variable);
+			if (this.left.type === 'Identifier' && exportNames) {
+				const _ = options.compact ? '' : ' ';
+				const operatorPos = findFirstOccurrenceOutsideComment(
+					code.original,
+					this.operator,
+					this.left.end
 				);
-				code.appendLeft(this.right.end, `)`);
-			} else if ('addExportedVariables' in this.left) {
+				const operation =
+					this.operator.length > 1 ? `${exportNames[0]}${_}${this.operator.slice(0, -1)}${_}` : '';
+				code.overwrite(
+					operatorPos,
+					findNonWhiteSpace(code.original, operatorPos + this.operator.length),
+					`=${_}${
+						exportNames.length === 1
+							? `exports('${exportNames[0]}',${_}`
+							: getSystemExportFunctionLeft([this.left.variable!], false, options)
+					}${operation}`
+				);
+				code.appendLeft(this.right.end, ')');
+			} else {
 				const systemPatternExports: Variable[] = [];
-				this.left.addExportedVariables(systemPatternExports);
+				this.left.addExportedVariables(systemPatternExports, options.exportNamesByVariable);
 				if (systemPatternExports.length > 0) {
 					code.prependRight(
 						this.start,
-						`function (v) {${getSystemExportStatement(systemPatternExports)} return v;} (`
+						getSystemExportFunctionLeft(systemPatternExports, true, options)
 					);
 					code.appendLeft(this.end, ')');
 				}
 			}
 		}
+	}
+
+	private applyDeoptimizations() {
+		this.deoptimized = true;
+		this.left.deoptimizePath(EMPTY_PATH);
+		this.right.deoptimizePath(UNKNOWN_PATH);
 	}
 }

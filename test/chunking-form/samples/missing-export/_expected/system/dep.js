@@ -1,4 +1,4 @@
-System.register([], function (exports, module) {
+System.register([], function (exports) {
   'use strict';
   return {
     execute: function () {
@@ -7,14 +7,14 @@ System.register([], function (exports, module) {
 
       var _missingExportShim = void 0;
 
-      function x () {
-        sideEffect();
+      function x (arg) {
+        sideEffect(arg);
       }
 
       exports({
-        missingFn: _missingExportShim,
+        default: _missingExportShim,
         missingExport: _missingExportShim,
-        default: _missingExportShim
+        missingFn: _missingExportShim
       });
 
     }

@@ -1,14 +1,14 @@
 import MagicString from 'magic-string';
 import { RenderOptions } from '../../utils/renderHelpers';
+import { InclusionContext } from '../ExecutionContext';
 import * as NodeType from './NodeType';
 import { ExpressionNode, StatementBase } from './shared/Node';
 
 export default class ExpressionStatement extends StatementBase {
 	directive?: string;
-	expression: ExpressionNode;
+	expression!: ExpressionNode;
 
 	initialise() {
-		this.included = false;
 		if (
 			this.directive &&
 			this.directive !== 'use strict' &&
@@ -18,24 +18,22 @@ export default class ExpressionStatement extends StatementBase {
 				// This is necessary, because either way (deleting or not) can lead to errors.
 				{
 					code: 'MODULE_LEVEL_DIRECTIVE',
-					message: `Module level directives cause errors when bundled, '${
-						this.directive
-					}' was ignored.`
+					message: `Module level directives cause errors when bundled, '${this.directive}' was ignored.`
 				},
 				this.start
 			);
 		}
 	}
 
-	shouldBeIncluded() {
-		if (this.directive && this.directive !== 'use strict')
-			return this.parent.type !== NodeType.Program;
-
-		return super.shouldBeIncluded();
-	}
-
 	render(code: MagicString, options: RenderOptions) {
 		super.render(code, options);
 		if (this.included) this.insertSemicolon(code);
+	}
+
+	shouldBeIncluded(context: InclusionContext) {
+		if (this.directive && this.directive !== 'use strict')
+			return this.parent.type !== NodeType.Program;
+
+		return super.shouldBeIncluded(context);
 	}
 }

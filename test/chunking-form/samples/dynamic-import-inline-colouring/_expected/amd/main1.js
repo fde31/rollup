@@ -1,9 +1,19 @@
-define(['require', 'exports', './generated-chunk.js', './generated-chunk2.js'], function (require, exports, inlined_js, separate_js) { 'use strict';
+define(['require', 'exports', './generated-separate'], function (require, exports, separate$1) { 'use strict';
 
-	const inlined = new Promise(function (resolve, reject) { require(['./generated-chunk.js'], resolve, reject) });
-	const separate = new Promise(function (resolve, reject) { require(['./generated-chunk2.js'], resolve, reject) });
+	var inlined = 'inlined';
+	const x = 1;
+	console.log('inlined');
 
-	exports.inlined = inlined;
+	var inlined$1 = /*#__PURE__*/Object.freeze({
+		__proto__: null,
+		'default': inlined,
+		x: x
+	});
+
+	const inlined$2 = Promise.resolve().then(function () { return inlined$1; });
+	const separate = new Promise(function (resolve, reject) { require(['./generated-separate'], resolve, reject) });
+
+	exports.inlined = inlined$2;
 	exports.separate = separate;
 
 	Object.defineProperty(exports, '__esModule', { value: true });

@@ -1,4 +1,4 @@
-System.register('myBundle', ['other'], function (exports, module) {
+System.register('myBundle', ['other'], function (exports) {
 	'use strict';
 	var name;
 	return {
@@ -11,6 +11,7 @@ System.register('myBundle', ['other'], function (exports, module) {
 			const b = 2;
 
 			const namespace = /*#__PURE__*/Object.freeze({
+				__proto__: null,
 				a: a,
 				b: b
 			});
