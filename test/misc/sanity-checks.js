@@ -110,7 +110,7 @@ describe('sanity checks', () => {
 		}
 		assert.strictEqual(
 			error && error.message,
-			'You must specify "output.format", which can be one of "amd", "cjs", "system", "es", "iife" or "umd".'
+			'You must specify "output.format", which can be one of "amd", "cjs", "system", "es", "iife", "umd" or "c74max".'
 		);
 	});
 
