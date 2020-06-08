@@ -105,6 +105,7 @@ const getFormat = (config: GenericConfigObject): InternalModuleFormat => {
 		case 'systemjs':
 			return 'system';
 		case 'amd':
+		case 'c74max':
 		case 'iife':
 		case 'umd':
 			return configFormat;
