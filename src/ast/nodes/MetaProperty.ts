@@ -155,6 +155,7 @@ export default class MetaProperty extends NodeBase {
 
 const accessedMetaUrlGlobals = {
 	amd: ['document', 'module', 'URL'],
+	c74max: ['document', 'require', 'URL'],
 	cjs: ['document', 'require', 'URL'],
 	iife: ['document', 'URL'],
 	system: ['module'],
@@ -163,6 +164,7 @@ const accessedMetaUrlGlobals = {
 
 const accessedFileUrlGlobals = {
 	amd: ['document', 'require', 'URL'],
+	c74max: ['document', 'require', 'URL'],
 	cjs: ['document', 'require', 'URL'],
 	iife: ['document', 'URL'],
 	system: ['module', 'URL'],
@@ -192,6 +194,11 @@ const relativeUrlMechanisms: Record<string, (relativePath: string) => string> = 
 		if (relativePath[0] !== '.') relativePath = './' + relativePath;
 		return getResolveUrl(`require.toUrl('${relativePath}'), document.baseURI`);
 	},
+	c74max: relativePath =>
+		`(typeof document === 'undefined' ? ${getResolveUrl(
+			`'file:' + __dirname + '/${relativePath}'`,
+			`(require('u' + 'rl').URL)`
+		)} : ${getRelativeUrlFromDocument(relativePath)})`,
 	cjs: relativePath =>
 		`(typeof document === 'undefined' ? ${getResolveUrl(
 			`'file:' + __dirname + '/${relativePath}'`,
@@ -209,6 +216,13 @@ const relativeUrlMechanisms: Record<string, (relativePath: string) => string> = 
 
 const importMetaMechanisms: Record<string, (prop: string | null, chunkId: string) => string> = {
 	amd: getGenericImportMetaMechanism(() => getResolveUrl(`module.uri, document.baseURI`)),
+	c74max: getGenericImportMetaMechanism(
+		chunkId =>
+			`(typeof document === 'undefined' ? ${getResolveUrl(
+				`'file:' + __filename`,
+				`(require('u' + 'rl').URL)`
+			)} : ${getUrlFromDocument(chunkId)})`
+	),
 	cjs: getGenericImportMetaMechanism(
 		chunkId =>
 			`(typeof document === 'undefined' ? ${getResolveUrl(
