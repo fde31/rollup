@@ -124,7 +124,11 @@ function getAbsoluteEntryModulePaths(chunks: Chunk[]): string[] {
 }
 
 function validateOptionsForMultiChunkOutput(outputOptions: NormalizedOutputOptions) {
-	if (outputOptions.format === 'umd' || outputOptions.format === 'iife')
+	if (
+		outputOptions.format === 'umd' ||
+		outputOptions.format === 'iife' ||
+		outputOptions.format === 'c74max'
+	)
 		return error({
 			code: 'INVALID_OPTION',
 			message: 'UMD and IIFE output formats are not supported for code-splitting builds.'
