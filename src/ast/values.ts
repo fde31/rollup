@@ -1,23 +1,16 @@
-import CallOptions from './CallOptions';
-import { ExecutionPathOptions } from './ExecutionPathOptions';
+import { CallOptions, NO_ARGS } from './CallOptions';
+import { HasEffectsContext, InclusionContext } from './ExecutionContext';
 import { LiteralValue } from './nodes/Literal';
 import { ExpressionEntity } from './nodes/shared/Expression';
-
-export interface UnknownKey {
-	UNKNOWN_KEY: true;
-}
-export const UNKNOWN_KEY: UnknownKey = { UNKNOWN_KEY: true };
-
-export type ObjectPathKey = string | UnknownKey;
-export type ObjectPath = ObjectPathKey[];
-export const EMPTY_PATH: ObjectPath = [];
-export const UNKNOWN_PATH: ObjectPath = [UNKNOWN_KEY];
+import { ExpressionNode } from './nodes/shared/Node';
+import SpreadElement from './nodes/SpreadElement';
+import { EMPTY_PATH, ObjectPath, ObjectPathKey } from './utils/PathTracker';
 
 export interface MemberDescription {
+	callsArgs: number[] | null;
+	mutatesSelf: boolean;
 	returns: { new (): ExpressionEntity } | null;
 	returnsPrimitive: ExpressionEntity | null;
-	mutatesSelf: boolean;
-	callsArgs: number[] | null;
 }
 
 export interface MemberDescriptions {
@@ -30,45 +23,50 @@ interface RawMemberDescription {
 
 function assembleMemberDescriptions(
 	memberDescriptions: { [key: string]: RawMemberDescription },
-	inheritedDescriptions: MemberDescriptions = null
+	inheritedDescriptions: MemberDescriptions | null = null
 ): MemberDescriptions {
 	return Object.create(inheritedDescriptions, memberDescriptions);
 }
 
-export interface UnknownValue {
-	UNKNOWN_VALUE: true;
-}
-export const UNKNOWN_VALUE: UnknownValue = { UNKNOWN_VALUE: true };
-export type LiteralValueOrUnknown = LiteralValue | UnknownValue;
+export const UnknownValue = Symbol('Unknown Value');
+export type LiteralValueOrUnknown = LiteralValue | typeof UnknownValue;
 
 export const UNKNOWN_EXPRESSION: ExpressionEntity = {
-	included: true,
-	getLiteralValueAtPath: () => UNKNOWN_VALUE,
+	deoptimizePath: () => {},
+	getLiteralValueAtPath: () => UnknownValue,
 	getReturnExpressionWhenCalledAtPath: () => UNKNOWN_EXPRESSION,
 	hasEffectsWhenAccessedAtPath: path => path.length > 0,
 	hasEffectsWhenAssignedAtPath: path => path.length > 0,
 	hasEffectsWhenCalledAtPath: () => true,
 	include: () => {},
-	deoptimizePath: () => {},
+	includeCallArguments(context: InclusionContext, args: (ExpressionNode | SpreadElement)[]): void {
+		for (const arg of args) {
+			arg.include(context, false);
+		}
+	},
+	included: true,
 	toString: () => '[[UNKNOWN]]'
 };
+
 export const UNDEFINED_EXPRESSION: ExpressionEntity = {
-	included: true,
+	deoptimizePath: () => {},
 	getLiteralValueAtPath: () => undefined,
 	getReturnExpressionWhenCalledAtPath: () => UNKNOWN_EXPRESSION,
 	hasEffectsWhenAccessedAtPath: path => path.length > 0,
 	hasEffectsWhenAssignedAtPath: path => path.length > 0,
 	hasEffectsWhenCalledAtPath: () => true,
 	include: () => {},
-	deoptimizePath: () => {},
+	includeCallArguments(): void {},
+	included: true,
 	toString: () => 'undefined'
 };
+
 const returnsUnknown: RawMemberDescription = {
 	value: {
-		returns: null,
-		returnsPrimitive: UNKNOWN_EXPRESSION,
 		callsArgs: null,
-		mutatesSelf: false
+		mutatesSelf: false,
+		returns: null,
+		returnsPrimitive: UNKNOWN_EXPRESSION
 	}
 };
 const mutatesSelfReturnsUnknown: RawMemberDescription = {
@@ -79,10 +77,12 @@ const callsArgReturnsUnknown: RawMemberDescription = {
 };
 
 export class UnknownArrayExpression implements ExpressionEntity {
-	included: boolean = false;
+	included = false;
 
-	getLiteralValueAtPath() {
-		return UNKNOWN_VALUE;
+	deoptimizePath() {}
+
+	getLiteralValueAtPath(): LiteralValueOrUnknown {
+		return UnknownValue;
 	}
 
 	getReturnExpressionWhenCalledAtPath(path: ObjectPath) {
@@ -103,10 +103,10 @@ export class UnknownArrayExpression implements ExpressionEntity {
 	hasEffectsWhenCalledAtPath(
 		path: ObjectPath,
 		callOptions: CallOptions,
-		options: ExecutionPathOptions
+		context: HasEffectsContext
 	) {
 		if (path.length === 1) {
-			return hasMemberEffectWhenCalled(arrayMembers, path[0], this.included, callOptions, options);
+			return hasMemberEffectWhenCalled(arrayMembers, path[0], this.included, callOptions, context);
 		}
 		return true;
 	}
@@ -115,7 +115,11 @@ export class UnknownArrayExpression implements ExpressionEntity {
 		this.included = true;
 	}
 
-	deoptimizePath() {}
+	includeCallArguments(context: InclusionContext, args: (ExpressionNode | SpreadElement)[]): void {
+		for (const arg of args) {
+			arg.include(context, false);
+		}
+	}
 
 	toString() {
 		return '[[UNKNOWN ARRAY]]';
@@ -124,40 +128,40 @@ export class UnknownArrayExpression implements ExpressionEntity {
 
 const returnsArray: RawMemberDescription = {
 	value: {
-		returns: UnknownArrayExpression,
-		returnsPrimitive: null,
 		callsArgs: null,
-		mutatesSelf: false
+		mutatesSelf: false,
+		returns: UnknownArrayExpression,
+		returnsPrimitive: null
 	}
 };
 const mutatesSelfReturnsArray: RawMemberDescription = {
 	value: {
-		returns: UnknownArrayExpression,
-		returnsPrimitive: null,
 		callsArgs: null,
-		mutatesSelf: true
+		mutatesSelf: true,
+		returns: UnknownArrayExpression,
+		returnsPrimitive: null
 	}
 };
 const callsArgReturnsArray: RawMemberDescription = {
 	value: {
-		returns: UnknownArrayExpression,
-		returnsPrimitive: null,
 		callsArgs: [0],
-		mutatesSelf: false
+		mutatesSelf: false,
+		returns: UnknownArrayExpression,
+		returnsPrimitive: null
 	}
 };
 const callsArgMutatesSelfReturnsArray: RawMemberDescription = {
 	value: {
-		returns: UnknownArrayExpression,
-		returnsPrimitive: null,
 		callsArgs: [0],
-		mutatesSelf: true
+		mutatesSelf: true,
+		returns: UnknownArrayExpression,
+		returnsPrimitive: null
 	}
 };
 
 const UNKNOWN_LITERAL_BOOLEAN: ExpressionEntity = {
-	included: true,
-	getLiteralValueAtPath: () => UNKNOWN_VALUE,
+	deoptimizePath: () => {},
+	getLiteralValueAtPath: () => UnknownValue,
 	getReturnExpressionWhenCalledAtPath: path => {
 		if (path.length === 1) {
 			return getMemberReturnExpressionWhenCalled(literalBooleanMembers, path[0]);
@@ -174,30 +178,35 @@ const UNKNOWN_LITERAL_BOOLEAN: ExpressionEntity = {
 		return true;
 	},
 	include: () => {},
-	deoptimizePath: () => {},
+	includeCallArguments(context: InclusionContext, args: (ExpressionNode | SpreadElement)[]): void {
+		for (const arg of args) {
+			arg.include(context, false);
+		}
+	},
+	included: true,
 	toString: () => '[[UNKNOWN BOOLEAN]]'
 };
 
 const returnsBoolean: RawMemberDescription = {
 	value: {
-		returns: null,
-		returnsPrimitive: UNKNOWN_LITERAL_BOOLEAN,
 		callsArgs: null,
-		mutatesSelf: false
+		mutatesSelf: false,
+		returns: null,
+		returnsPrimitive: UNKNOWN_LITERAL_BOOLEAN
 	}
 };
 const callsArgReturnsBoolean: RawMemberDescription = {
 	value: {
-		returns: null,
-		returnsPrimitive: UNKNOWN_LITERAL_BOOLEAN,
 		callsArgs: [0],
-		mutatesSelf: false
+		mutatesSelf: false,
+		returns: null,
+		returnsPrimitive: UNKNOWN_LITERAL_BOOLEAN
 	}
 };
 
 const UNKNOWN_LITERAL_NUMBER: ExpressionEntity = {
-	included: true,
-	getLiteralValueAtPath: () => UNKNOWN_VALUE,
+	deoptimizePath: () => {},
+	getLiteralValueAtPath: () => UnknownValue,
 	getReturnExpressionWhenCalledAtPath: path => {
 		if (path.length === 1) {
 			return getMemberReturnExpressionWhenCalled(literalNumberMembers, path[0]);
@@ -214,38 +223,43 @@ const UNKNOWN_LITERAL_NUMBER: ExpressionEntity = {
 		return true;
 	},
 	include: () => {},
-	deoptimizePath: () => {},
+	includeCallArguments(context: InclusionContext, args: (ExpressionNode | SpreadElement)[]): void {
+		for (const arg of args) {
+			arg.include(context, false);
+		}
+	},
+	included: true,
 	toString: () => '[[UNKNOWN NUMBER]]'
 };
 
 const returnsNumber: RawMemberDescription = {
 	value: {
-		returns: null,
-		returnsPrimitive: UNKNOWN_LITERAL_NUMBER,
 		callsArgs: null,
-		mutatesSelf: false
+		mutatesSelf: false,
+		returns: null,
+		returnsPrimitive: UNKNOWN_LITERAL_NUMBER
 	}
 };
 const mutatesSelfReturnsNumber: RawMemberDescription = {
 	value: {
-		returns: null,
-		returnsPrimitive: UNKNOWN_LITERAL_NUMBER,
 		callsArgs: null,
-		mutatesSelf: true
+		mutatesSelf: true,
+		returns: null,
+		returnsPrimitive: UNKNOWN_LITERAL_NUMBER
 	}
 };
 const callsArgReturnsNumber: RawMemberDescription = {
 	value: {
-		returns: null,
-		returnsPrimitive: UNKNOWN_LITERAL_NUMBER,
 		callsArgs: [0],
-		mutatesSelf: false
+		mutatesSelf: false,
+		returns: null,
+		returnsPrimitive: UNKNOWN_LITERAL_NUMBER
 	}
 };
 
 const UNKNOWN_LITERAL_STRING: ExpressionEntity = {
-	included: true,
-	getLiteralValueAtPath: () => UNKNOWN_VALUE,
+	deoptimizePath: () => {},
+	getLiteralValueAtPath: () => UnknownValue,
 	getReturnExpressionWhenCalledAtPath: path => {
 		if (path.length === 1) {
 			return getMemberReturnExpressionWhenCalled(literalStringMembers, path[0]);
@@ -254,31 +268,38 @@ const UNKNOWN_LITERAL_STRING: ExpressionEntity = {
 	},
 	hasEffectsWhenAccessedAtPath: path => path.length > 1,
 	hasEffectsWhenAssignedAtPath: path => path.length > 0,
-	hasEffectsWhenCalledAtPath: (path, callOptions, options) => {
+	hasEffectsWhenCalledAtPath: (path, callOptions, context) => {
 		if (path.length === 1) {
-			return hasMemberEffectWhenCalled(literalStringMembers, path[0], true, callOptions, options);
+			return hasMemberEffectWhenCalled(literalStringMembers, path[0], true, callOptions, context);
 		}
 		return true;
 	},
 	include: () => {},
-	deoptimizePath: () => {},
+	includeCallArguments(context: InclusionContext, args: (ExpressionNode | SpreadElement)[]): void {
+		for (const arg of args) {
+			arg.include(context, false);
+		}
+	},
+	included: true,
 	toString: () => '[[UNKNOWN STRING]]'
 };
 
 const returnsString: RawMemberDescription = {
 	value: {
-		returns: null,
-		returnsPrimitive: UNKNOWN_LITERAL_STRING,
 		callsArgs: null,
-		mutatesSelf: false
+		mutatesSelf: false,
+		returns: null,
+		returnsPrimitive: UNKNOWN_LITERAL_STRING
 	}
 };
 
 export class UnknownObjectExpression implements ExpressionEntity {
-	included: boolean = false;
+	included = false;
 
-	getLiteralValueAtPath() {
-		return UNKNOWN_VALUE;
+	deoptimizePath() {}
+
+	getLiteralValueAtPath(): LiteralValueOrUnknown {
+		return UnknownValue;
 	}
 
 	getReturnExpressionWhenCalledAtPath(path: ObjectPath) {
@@ -299,10 +320,10 @@ export class UnknownObjectExpression implements ExpressionEntity {
 	hasEffectsWhenCalledAtPath(
 		path: ObjectPath,
 		callOptions: CallOptions,
-		options: ExecutionPathOptions
+		context: HasEffectsContext
 	) {
 		if (path.length === 1) {
-			return hasMemberEffectWhenCalled(objectMembers, path[0], this.included, callOptions, options);
+			return hasMemberEffectWhenCalled(objectMembers, path[0], this.included, callOptions, context);
 		}
 		return true;
 	}
@@ -311,7 +332,11 @@ export class UnknownObjectExpression implements ExpressionEntity {
 		this.included = true;
 	}
 
-	deoptimizePath() {}
+	includeCallArguments(context: InclusionContext, args: (ExpressionNode | SpreadElement)[]): void {
+		for (const arg of args) {
+			arg.include(context, false);
+		}
+	}
 
 	toString() {
 		return '[[UNKNOWN OBJECT]]';
@@ -381,8 +406,8 @@ const literalStringMembers: MemberDescriptions = assembleMemberDescriptions(
 		charCodeAt: returnsNumber,
 		codePointAt: returnsNumber,
 		concat: returnsString,
-		includes: returnsBoolean,
 		endsWith: returnsBoolean,
+		includes: returnsBoolean,
 		indexOf: returnsNumber,
 		lastIndexOf: returnsNumber,
 		localeCompare: returnsNumber,
@@ -393,10 +418,10 @@ const literalStringMembers: MemberDescriptions = assembleMemberDescriptions(
 		repeat: returnsString,
 		replace: {
 			value: {
-				returns: null,
-				returnsPrimitive: UNKNOWN_LITERAL_STRING,
 				callsArgs: [1],
-				mutatesSelf: false
+				mutatesSelf: false,
+				returns: null,
+				returnsPrimitive: UNKNOWN_LITERAL_STRING
 			}
 		},
 		search: returnsNumber,
@@ -415,7 +440,7 @@ const literalStringMembers: MemberDescriptions = assembleMemberDescriptions(
 	objectMembers
 );
 
-export function getLiteralMembersForValue<T = LiteralValue>(value: T) {
+export function getLiteralMembersForValue<T extends LiteralValue = LiteralValue>(value: T) {
 	switch (typeof value) {
 		case 'boolean':
 			return literalBooleanMembers;
@@ -433,22 +458,25 @@ export function hasMemberEffectWhenCalled(
 	memberName: ObjectPathKey,
 	parentIncluded: boolean,
 	callOptions: CallOptions,
-	options: ExecutionPathOptions
+	context: HasEffectsContext
 ) {
-	if (typeof memberName !== 'string' || !members[memberName]) return true;
-	if (members[memberName].mutatesSelf && parentIncluded) return true;
+	if (
+		typeof memberName !== 'string' ||
+		!members[memberName] ||
+		(members[memberName].mutatesSelf && parentIncluded)
+	)
+		return true;
 	if (!members[memberName].callsArgs) return false;
-	for (const argIndex of members[memberName].callsArgs) {
+	for (const argIndex of members[memberName].callsArgs!) {
 		if (
 			callOptions.args[argIndex] &&
 			callOptions.args[argIndex].hasEffectsWhenCalledAtPath(
 				EMPTY_PATH,
-				CallOptions.create({
-					withNew: false,
-					args: [],
-					callIdentifier: {} // make sure the caller is unique to avoid this check being ignored
-				}),
-				options.getHasEffectsWhenCalledOptions()
+				{
+					args: NO_ARGS,
+					withNew: false
+				},
+				context
 			)
 		)
 			return true;
@@ -462,6 +490,6 @@ export function getMemberReturnExpressionWhenCalled(
 ): ExpressionEntity {
 	if (typeof memberName !== 'string' || !members[memberName]) return UNKNOWN_EXPRESSION;
 	return members[memberName].returnsPrimitive !== null
-		? members[memberName].returnsPrimitive
-		: new members[memberName].returns();
+		? members[memberName].returnsPrimitive!
+		: new members[memberName].returns!();
 }

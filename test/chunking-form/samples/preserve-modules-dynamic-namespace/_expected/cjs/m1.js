@@ -1,9 +1,11 @@
 'use strict';
 
-var __chunk_1 = require('./m2.js');
-var __chunk_2 = require('./m3.js');
+Object.defineProperty(exports, '__esModule', { value: true });
+
+var m2 = require('./m2.js');
+var m3 = require('./m3.js');
 
 
 
-exports.m2 = __chunk_1.default;
-exports.m3 = __chunk_2.default;
+exports.m2 = m2;
+exports.m3 = m3;

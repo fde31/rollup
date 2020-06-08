@@ -1,10 +1,10 @@
 (function (factory) {
 	typeof define === 'function' && define.amd ? define(factory) :
 	factory();
-}(function () { 'use strict';
+}((function () { 'use strict';
 
-	function foo () {
-		return 42;
+	function foo (x) {
+		return x;
 	}
 
 	var str = `
@@ -13,4 +13,4 @@
 
 	console.log( foo(str) );
 
-}));
+})));

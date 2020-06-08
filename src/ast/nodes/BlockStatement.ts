@@ -1,20 +1,20 @@
 import MagicString from 'magic-string';
 import { RenderOptions, renderStatementList } from '../../utils/renderHelpers';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
+import { HasEffectsContext, InclusionContext } from '../ExecutionContext';
 import BlockScope from '../scopes/BlockScope';
 import ChildScope from '../scopes/ChildScope';
 import Scope from '../scopes/Scope';
 import { UNKNOWN_EXPRESSION } from '../values';
+import ExpressionStatement from './ExpressionStatement';
 import * as NodeType from './NodeType';
-import { Node, StatementBase, StatementNode } from './shared/Node';
-
-export function isBlockStatement(node: Node): node is BlockStatement {
-	return node.type === NodeType.BlockStatement;
-}
+import { IncludeChildren, Node, StatementBase, StatementNode } from './shared/Node';
 
 export default class BlockStatement extends StatementBase {
-	type: NodeType.tBlockStatement;
-	body: StatementNode[];
+	body!: StatementNode[];
+	type!: NodeType.tBlockStatement;
+
+	private deoptimizeBody!: boolean;
+	private directlyIncluded = false;
 
 	addImplicitReturnExpressionToScope() {
 		const lastStatement = this.body[this.body.length - 1];
@@ -24,23 +24,37 @@ export default class BlockStatement extends StatementBase {
 	}
 
 	createScope(parentScope: Scope) {
-		this.scope = (<Node>this.parent).preventChildBlockScope
-			? <ChildScope>parentScope
+		this.scope = (this.parent as Node).preventChildBlockScope
+			? (parentScope as ChildScope)
 			: new BlockScope(parentScope);
 	}
 
-	hasEffects(options: ExecutionPathOptions) {
+	hasEffects(context: HasEffectsContext) {
+		if (this.deoptimizeBody) return true;
 		for (const node of this.body) {
-			if (node.hasEffects(options)) return true;
+			if (node.hasEffects(context)) return true;
+			if (context.brokenFlow) break;
+		}
+		return false;
+	}
+
+	include(context: InclusionContext, includeChildrenRecursively: IncludeChildren) {
+		if (!this.deoptimizeBody || !this.directlyIncluded) {
+			this.included = true;
+			this.directlyIncluded = true;
+			if (this.deoptimizeBody) includeChildrenRecursively = true;
+			for (const node of this.body) {
+				if (includeChildrenRecursively || node.shouldBeIncluded(context))
+					node.include(context, includeChildrenRecursively);
+			}
 		}
 	}
 
-	include(includeAllChildrenRecursively: boolean) {
-		this.included = true;
-		for (const node of this.body) {
-			if (includeAllChildrenRecursively || node.shouldBeIncluded())
-				node.include(includeAllChildrenRecursively);
-		}
+	initialise() {
+		const firstBodyStatement = this.body[0];
+		this.deoptimizeBody =
+			firstBodyStatement instanceof ExpressionStatement &&
+			firstBodyStatement.directive === 'use asm';
 	}
 
 	render(code: MagicString, options: RenderOptions) {

@@ -1,16 +1,16 @@
-System.register('iife', [], function (exports, module) {
+System.register('iife', [], function (exports) {
   'use strict';
   return {
     execute: function () {
 
       exports({
-        updateFoo: update,
         updateBar: update$1,
-        updateBaz: update$2
+        updateBaz: update$2,
+        updateFoo: update
       });
 
       function update () {
-        foo += exports('foo', 10);
+        foo = exports('foo', foo + 10);
       }
 
       let foo = exports('foo', 10);

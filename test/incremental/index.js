@@ -35,7 +35,7 @@ describe('incremental', () => {
 		};
 	});
 
-	it('does not resolves id and transforms in the second time', () => {
+	it('does not resolve ids and transforms in the second time', () => {
 		return rollup
 			.rollup({
 				input: 'entry',
@@ -58,6 +58,31 @@ describe('incremental', () => {
 			})
 			.then(result => {
 				assert.equal(result, 42);
+			});
+	});
+
+	it('does not resolve dynamic ids and transforms in the second time', () => {
+		modules = {
+			entry: `export default import('foo');`,
+			foo: `export default 42`
+		};
+		return rollup
+			.rollup({
+				input: 'entry',
+				plugins: [plugin]
+			})
+			.then(bundle => {
+				assert.equal(resolveIdCalls, 2);
+				assert.equal(transformCalls, 2);
+				return rollup.rollup({
+					input: 'entry',
+					plugins: [plugin],
+					cache: bundle
+				});
+			})
+			.then(bundle => {
+				assert.equal(resolveIdCalls, 3); // +1 for entry point which is resolved every time
+				assert.equal(transformCalls, 2);
 			});
 	});
 
@@ -236,12 +261,22 @@ describe('incremental', () => {
 				plugins: [plugin]
 			})
 			.then(bundle => {
-				assert.equal(bundle.cache.modules[1].id, 'foo');
-				assert.equal(bundle.cache.modules[0].id, 'entry');
+				assert.equal(bundle.cache.modules[0].id, 'foo');
+				assert.equal(bundle.cache.modules[1].id, 'entry');
 
-				assert.deepEqual(bundle.cache.modules[0].resolvedIds, {
-					foo: { id: 'foo', external: false },
-					external: { id: 'external', external: true }
+				assert.deepEqual(bundle.cache.modules[1].resolvedIds, {
+					foo: {
+						id: 'foo',
+						external: false,
+						moduleSideEffects: true,
+						syntheticNamedExports: false
+					},
+					external: {
+						id: 'external',
+						external: true,
+						moduleSideEffects: true,
+						syntheticNamedExports: false
+					}
 				});
 			});
 	});

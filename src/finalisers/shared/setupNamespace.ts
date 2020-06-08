@@ -5,14 +5,11 @@ export default function setupNamespace(
 	name: string,
 	root: string,
 	globals: GlobalsOption,
-	compact: boolean
+	compact: boolean | undefined
 ) {
-	const parts = name.split('.');
-	if (globals) {
-		parts[0] = (typeof globals === 'function' ? globals(parts[0]) : globals[parts[0]]) || parts[0];
-	}
-
 	const _ = compact ? '' : ' ';
+	const parts = name.split('.');
+	parts[0] = (typeof globals === 'function' ? globals(parts[0]) : globals[parts[0]]) || parts[0];
 	parts.pop();
 
 	let acc = root;
@@ -29,20 +26,18 @@ export function assignToDeepVariable(
 	deepName: string,
 	root: string,
 	globals: GlobalsOption,
-	compact: boolean,
+	compact: boolean | undefined,
 	assignment: string
 ): string {
 	const _ = compact ? '' : ' ';
 	const parts = deepName.split('.');
-	if (globals) {
-		parts[0] = (typeof globals === 'function' ? globals(parts[0]) : globals[parts[0]]) || parts[0];
-	}
+	parts[0] = (typeof globals === 'function' ? globals(parts[0]) : globals[parts[0]]) || parts[0];
 	const last = parts.pop();
 
 	let acc = root;
 	let deepAssignment = parts
 		.map(part => ((acc += property(part)), `${acc}${_}=${_}${acc}${_}||${_}{}`))
-		.concat(`${acc}${property(last)}`)
+		.concat(`${acc}${property(last!)}`)
 		.join(`,${_}`)
 		.concat(`${_}=${_}${assignment}`);
 	if (parts.length > 0) {

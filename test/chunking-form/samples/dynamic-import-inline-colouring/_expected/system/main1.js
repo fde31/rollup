@@ -1,11 +1,21 @@
-System.register(['./generated-chunk.js', './generated-chunk2.js'], function (exports, module) {
+System.register(['./generated-separate.js'], function (exports, module) {
 	'use strict';
 	return {
-		setters: [function () {}, function () {}],
+		setters: [function () {}],
 		execute: function () {
 
-			const inlined = exports('inlined', module.import('./generated-chunk.js'));
-			const separate = exports('separate', module.import('./generated-chunk2.js'));
+			var inlined = 'inlined';
+			const x = 1;
+			console.log('inlined');
+
+			var inlined$1 = /*#__PURE__*/Object.freeze({
+				__proto__: null,
+				'default': inlined,
+				x: x
+			});
+
+			const inlined$2 = exports('inlined', Promise.resolve().then(function () { return inlined$1; }));
+			const separate = exports('separate', module.import('./generated-separate.js'));
 
 		}
 	};

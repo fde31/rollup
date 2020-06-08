@@ -1,4 +1,5 @@
 'use strict';
 
-require('./generated-chunk.js');
+var dep = require('./generated-dep.js');
 
+console.log(dep.reexported);

@@ -1,39 +1,40 @@
-import CallOptions from '../CallOptions';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
-import { EMPTY_PATH } from '../values';
+import { CallOptions, NO_ARGS } from '../CallOptions';
+import { HasEffectsContext } from '../ExecutionContext';
+import { EMPTY_PATH } from '../utils/PathTracker';
 import Identifier from './Identifier';
 import * as NodeType from './NodeType';
 import { ExpressionNode, NodeBase } from './shared/Node';
 import TemplateLiteral from './TemplateLiteral';
 
 export default class TaggedTemplateExpression extends NodeBase {
-	type: NodeType.tTaggedTemplateExpression;
-	tag: ExpressionNode;
-	quasi: TemplateLiteral;
+	quasi!: TemplateLiteral;
+	tag!: ExpressionNode;
+	type!: NodeType.tTaggedTemplateExpression;
 
-	private callOptions: CallOptions;
+	private callOptions!: CallOptions;
 
 	bind() {
 		super.bind();
 		if (this.tag.type === NodeType.Identifier) {
-			const variable = this.scope.findVariable((<Identifier>this.tag).name);
+			const name = (this.tag as Identifier).name;
+			const variable = this.scope.findVariable(name);
 
 			if (variable.isNamespace) {
-				this.context.error(
+				this.context.warn(
 					{
 						code: 'CANNOT_CALL_NAMESPACE',
-						message: `Cannot call a namespace ('${(<Identifier>this.tag).name}')`
+						message: `Cannot call a namespace ('${name}')`,
 					},
 					this.start
 				);
 			}
 
-			if ((<Identifier>this.tag).name === 'eval') {
+			if (name === 'eval') {
 				this.context.warn(
 					{
 						code: 'EVAL',
 						message: `Use of eval is strongly discouraged, as it poses security risks and may cause issues with minification`,
-						url: 'https://rollupjs.org/guide/en#avoiding-eval'
+						url: 'https://rollupjs.org/guide/en/#avoiding-eval',
 					},
 					this.start
 				);
@@ -41,22 +42,17 @@ export default class TaggedTemplateExpression extends NodeBase {
 		}
 	}
 
-	hasEffects(options: ExecutionPathOptions) {
+	hasEffects(context: HasEffectsContext) {
 		return (
-			super.hasEffects(options) ||
-			this.tag.hasEffectsWhenCalledAtPath(
-				EMPTY_PATH,
-				this.callOptions,
-				options.getHasEffectsWhenCalledOptions()
-			)
+			super.hasEffects(context) ||
+			this.tag.hasEffectsWhenCalledAtPath(EMPTY_PATH, this.callOptions, context)
 		);
 	}
 
 	initialise() {
-		this.included = false;
-		this.callOptions = CallOptions.create({
+		this.callOptions = {
+			args: NO_ARGS,
 			withNew: false,
-			callIdentifier: this
-		});
+		};
 	}
 }

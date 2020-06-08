@@ -1,10 +1,22 @@
-define(['exports', 'starexternal2', 'external2', './generated-chunk.js'], function (exports, starexternal2, external2, __chunk_1) { 'use strict';
+define(['exports', 'starexternal2', 'external2', './generated-dep'], function (exports, starexternal2, external2, dep) { 'use strict';
 
 	var main = '2';
 
-	Object.keys(starexternal2).forEach(function (key) { exports[key] = starexternal2[key]; });
-	exports.e = external2.e;
-	exports.dep = __chunk_1.dep;
+	Object.keys(starexternal2).forEach(function (k) {
+		if (k !== 'default') Object.defineProperty(exports, k, {
+			enumerable: true,
+			get: function () {
+				return starexternal2[k];
+			}
+		});
+	});
+	Object.defineProperty(exports, 'e', {
+		enumerable: true,
+		get: function () {
+			return external2.e;
+		}
+	});
+	exports.dep = dep.dep;
 	exports.main = main;
 
 	Object.defineProperty(exports, '__esModule', { value: true });

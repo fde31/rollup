@@ -1,5 +1,5 @@
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
-import { EMPTY_PATH, ObjectPath } from '../values';
+import { HasEffectsContext } from '../ExecutionContext';
+import { EMPTY_PATH, ObjectPath } from '../utils/PathTracker';
 import Variable from '../variables/Variable';
 import * as NodeType from './NodeType';
 import Property from './Property';
@@ -9,31 +9,31 @@ import { NodeBase } from './shared/Node';
 import { PatternNode } from './shared/Pattern';
 
 export default class ObjectPattern extends NodeBase implements PatternNode {
-	type: NodeType.tObjectPattern;
-	properties: (Property | RestElement)[];
+	properties!: (Property | RestElement)[];
+	type!: NodeType.tObjectPattern;
 
-	addExportedVariables(variables: Variable[]): void {
+	addExportedVariables(
+		variables: Variable[],
+		exportNamesByVariable: Map<Variable, string[]>
+	): void {
 		for (const property of this.properties) {
 			if (property.type === NodeType.Property) {
-				(<PatternNode>(<unknown>property.value)).addExportedVariables(variables);
+				((property.value as unknown) as PatternNode).addExportedVariables(
+					variables,
+					exportNamesByVariable
+				);
 			} else {
-				property.argument.addExportedVariables(variables);
+				property.argument.addExportedVariables(variables, exportNamesByVariable);
 			}
 		}
 	}
 
 	declare(kind: string, init: ExpressionEntity) {
+		const variables = [];
 		for (const property of this.properties) {
-			property.declare(kind, init);
+			variables.push(...property.declare(kind, init));
 		}
-	}
-
-	hasEffectsWhenAssignedAtPath(path: ObjectPath, options: ExecutionPathOptions) {
-		if (path.length > 0) return true;
-		for (const property of this.properties) {
-			if (property.hasEffectsWhenAssignedAtPath(EMPTY_PATH, options)) return true;
-		}
-		return false;
+		return variables;
 	}
 
 	deoptimizePath(path: ObjectPath) {
@@ -42,5 +42,13 @@ export default class ObjectPattern extends NodeBase implements PatternNode {
 				property.deoptimizePath(path);
 			}
 		}
+	}
+
+	hasEffectsWhenAssignedAtPath(path: ObjectPath, context: HasEffectsContext) {
+		if (path.length > 0) return true;
+		for (const property of this.properties) {
+			if (property.hasEffectsWhenAssignedAtPath(EMPTY_PATH, context)) return true;
+		}
+		return false;
 	}
 }

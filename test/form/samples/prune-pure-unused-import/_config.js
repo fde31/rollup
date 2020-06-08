@@ -1,7 +1,8 @@
 module.exports = {
+	description: 'prunes pure unused external imports ([#1352])',
+	expectedWarnings: ['EMPTY_BUNDLE'],
 	options: {
 		external: ['external', 'other'],
-		treeshake: { pureExternalModules: true }
-	},
-	description: 'prunes pure unused external imports ([#1352])'
+		treeshake: { moduleSideEffects: 'no-external' }
+	}
 };

@@ -19,11 +19,20 @@ runTestSuiteWithSamples('chunking form', path.resolve(__dirname, 'samples'), (di
 							extend(
 								{
 									input: [dir + '/main.js'],
-									onwarn: msg => {
-										if (/No name was provided for/.test(msg)) return;
-										if (/as external dependency/.test(msg)) return;
-										console.error(msg);
-									}
+									onwarn: warning => {
+										if (
+											!(
+												config.expectedWarnings &&
+												config.expectedWarnings.indexOf(warning.code) >= 0
+											)
+										) {
+											throw new Error(
+												`Unexpected warnings (${warning.code}): ${warning.message}\n` +
+													'If you expect warnings, list their codes in config.expectedWarnings'
+											);
+										}
+									},
+									strictDeprecations: true
 								},
 								config.options || {}
 							)
@@ -49,8 +58,20 @@ runTestSuiteWithSamples('chunking form', path.resolve(__dirname, 'samples'), (di
 	);
 });
 
-function generateAndTestBundle(bundle, outputOptions, expectedDir) {
+function generateAndTestBundle(bundle, outputOptions, expectedDir, config) {
 	return bundle
 		.write(outputOptions)
+		.then(() => {
+			if (outputOptions.format === 'amd' && config.runAmd) {
+				return new Promise(resolve => {
+					global.assert = require('assert');
+					const requirejs = require('requirejs');
+					requirejs.config({ baseUrl: outputOptions.dir });
+					requirejs(['main'], main => {
+						Promise.resolve(config.runAmd.exports && config.runAmd.exports(main)).then(resolve);
+					});
+				});
+			}
+		})
 		.then(() => assertDirectoriesAreEqual(outputOptions.dir, expectedDir));
 }

@@ -1,5 +1,20 @@
-define(['./generated-chunk.js'], function (__chunk_1) { 'use strict';
+define(function () { 'use strict';
 
-	console.log(__chunk_1.foo(), __chunk_1.bar());
+	function foo() {
+		return 'dep2';
+	}
+
+	Promise.resolve().then(function () { return dep1; }).then(({ bar }) => console.log(bar()));
+
+	function bar() {
+		return foo();
+	}
+
+	var dep1 = /*#__PURE__*/Object.freeze({
+		__proto__: null,
+		bar: bar
+	});
+
+	console.log(foo(), bar());
 
 });

@@ -6,16 +6,22 @@ declare module 'help.md' {
 }
 
 // external libs
-declare module 'ansi-escapes';
-declare module 'pretty-ms';
-declare module 'pretty-bytes';
-declare module 'rollup-plugin-buble';
-declare module 'signal-exit';
-declare module 'date-time';
-declare module 'locate-character';
-declare module 'is-reference';
-declare module 'sourcemap-codec';
-declare module 'require-relative';
-declare module 'rollup-pluginutils/src/createFilter.js';
-declare module 'acorn-dynamic-import';
-declare module 'acorn-import-meta';
+declare module 'acorn-static-class-features' {
+	const plugin: (BaseParser: typeof acorn.Parser) => typeof acorn.Parser;
+	export default plugin;
+}
+
+declare module 'acorn-class-fields' {
+	const plugin: (BaseParser: typeof acorn.Parser) => typeof acorn.Parser;
+	export default plugin;
+}
+
+declare module 'acorn-import-meta' {
+	const plugin: (BaseParser: typeof acorn.Parser) => typeof acorn.Parser;
+	export default plugin;
+}
+
+declare module 'acorn-export-ns-from' {
+	const plugin: (BaseParser: typeof acorn.Parser) => typeof acorn.Parser;
+	export default plugin;
+}

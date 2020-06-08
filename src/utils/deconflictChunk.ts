@@ -1,76 +1,92 @@
 import ExportDefaultVariable from '../ast/variables/ExportDefaultVariable';
+import SyntheticNamedExportVariable from '../ast/variables/SyntheticNamedExportVariable';
 import Variable from '../ast/variables/Variable';
 import Chunk from '../Chunk';
 import ExternalModule from '../ExternalModule';
 import Module from '../Module';
-import { NameCollection, RESERVED_NAMES_BY_FORMAT } from './reservedNames';
 import { getSafeName } from './safeName';
 
 const DECONFLICT_IMPORTED_VARIABLES_BY_FORMAT: {
 	[format: string]: (
-		usedNames: NameCollection,
+		usedNames: Set<string>,
 		imports: Set<Variable>,
-		dependencies: (ExternalModule | Chunk)[],
+		dependencies: Set<ExternalModule | Chunk>,
 		interop: boolean,
-		preserveModules: boolean
+		preserveModules: boolean,
+		syntheticExports: Set<SyntheticNamedExportVariable>
 	) => void;
 } = {
-	cjs: deconflictImportsOther,
-	iife: deconflictImportsOther,
 	amd: deconflictImportsOther,
-	umd: deconflictImportsOther,
-	system: deconflictImportsEsm,
-	es: deconflictImportsEsm
+	cjs: deconflictImportsOther,
+	es: deconflictImportsEsm,
+	iife: deconflictImportsOther,
+	system: deconflictImportsEsmOrSystem,
+	umd: deconflictImportsOther
 };
 
 export function deconflictChunk(
 	modules: Module[],
-	dependencies: (ExternalModule | Chunk)[],
+	dependencies: Set<ExternalModule | Chunk>,
 	imports: Set<Variable>,
-	usedNames: NameCollection,
+	usedNames: Set<string>,
 	format: string,
 	interop: boolean,
-	preserveModules: boolean
+	preserveModules: boolean,
+	syntheticExports: Set<SyntheticNamedExportVariable>,
+	exportNamesByVariable: Map<Variable, string[]>
 ) {
-	const { forbiddenNames, formatGlobals } = RESERVED_NAMES_BY_FORMAT[format];
-	Object.assign(usedNames, forbiddenNames);
-	Object.assign(usedNames, formatGlobals);
-	addUsedGlobalNames(usedNames, modules);
+	for (const module of modules) {
+		module.scope.addUsedOutsideNames(usedNames, format, exportNamesByVariable);
+	}
 	deconflictTopLevelVariables(usedNames, modules);
 	DECONFLICT_IMPORTED_VARIABLES_BY_FORMAT[format](
 		usedNames,
 		imports,
 		dependencies,
 		interop,
-		preserveModules
+		preserveModules,
+		syntheticExports
 	);
 
 	for (const module of modules) {
-		module.scope.deconflict(forbiddenNames);
-	}
-}
-
-function addUsedGlobalNames(usedNames: NameCollection, modules: Module[]) {
-	const accessedGlobals: { [name: string]: Variable } = Object.assign(
-		{},
-		...modules.map(module => module.scope.accessedOutsideVariables)
-	);
-
-	for (const name of Object.keys(accessedGlobals)) {
-		const variable = accessedGlobals[name];
-		if (variable.included) {
-			usedNames[name] = true;
-		}
+		module.scope.deconflict(format, exportNamesByVariable);
 	}
 }
 
 function deconflictImportsEsm(
-	usedNames: NameCollection,
+	usedNames: Set<string>,
 	imports: Set<Variable>,
-	_dependencies: (ExternalModule | Chunk)[],
+	dependencies: Set<ExternalModule | Chunk>,
+	interop: boolean,
+	preserveModules: boolean,
+	syntheticExports: Set<SyntheticNamedExportVariable>
+) {
+	// Deconflict re-exported variables of dependencies when preserveModules is true.
+	// However, this implementation will result in unnecessary variable renaming without
+	// a deeper, wider fix.
+	//
+	// TODO: https://github.com/rollup/rollup/pull/3435#discussion_r390792792
+	if (preserveModules) {
+		for (const chunkOrExternalModule of dependencies) {
+			chunkOrExternalModule.variableName = getSafeName(
+				chunkOrExternalModule.variableName,
+				usedNames
+			);
+		}
+	}
+	deconflictImportsEsmOrSystem(usedNames, imports, dependencies, interop);
+	for (const variable of syntheticExports) {
+		variable.setSafeName(getSafeName(variable.name, usedNames));
+	}
+}
+
+function deconflictImportsEsmOrSystem(
+	usedNames: Set<string>,
+	imports: Set<Variable>,
+	_dependencies: Set<ExternalModule | Chunk>,
 	interop: boolean
 ) {
-	for (const variable of Array.from(imports)) {
+	for (const variable of imports) {
 		const module = variable.module;
 		const name = variable.name;
 		let proposedName: string;
@@ -88,16 +104,16 @@ function deconflictImportsEsm(
 }
 
 function deconflictImportsOther(
-	usedNames: NameCollection,
+	usedNames: Set<string>,
 	imports: Set<Variable>,
-	dependencies: (ExternalModule | Chunk)[],
+	dependencies: Set<ExternalModule | Chunk>,
 	interop: boolean,
 	preserveModules: boolean
 ) {
 	for (const chunkOrExternalModule of dependencies) {
 		chunkOrExternalModule.variableName = getSafeName(chunkOrExternalModule.variableName, usedNames);
 	}
-	for (const variable of Array.from(imports)) {
+	for (const variable of imports) {
 		const module = variable.module;
 		if (module instanceof ExternalModule) {
 			const name = variable.name;
@@ -109,33 +125,34 @@ function deconflictImportsOther(
 				variable.setRenderNames(module.variableName, null);
 			}
 		} else {
-			const chunk = module.chunk;
+			const chunk = module!.chunk!;
 			if (chunk.exportMode === 'default' || (preserveModules && variable.isNamespace)) {
 				variable.setRenderNames(null, chunk.variableName);
 			} else {
-				variable.setRenderNames(chunk.variableName, module.chunk.getVariableExportName(variable));
+				variable.setRenderNames(
+					chunk.variableName,
+					chunk.getVariableExportName(variable) as string | null
+				);
 			}
 		}
 	}
 }
 
-function deconflictTopLevelVariables(usedNames: NameCollection, modules: Module[]) {
+function deconflictTopLevelVariables(usedNames: Set<string>, modules: Module[]) {
 	for (const module of modules) {
-		const moduleVariables = module.scope.variables;
-		for (const name of Object.keys(moduleVariables)) {
-			const variable = moduleVariables[name];
+		for (const variable of module.scope.variables.values()) {
 			if (
 				variable.included &&
 				// this will only happen for exports in some formats
 				!(
 					variable.renderBaseName ||
-					(variable instanceof ExportDefaultVariable && variable.referencesOriginal())
+					(variable instanceof ExportDefaultVariable && variable.getOriginalVariable() !== variable)
 				)
 			) {
 				variable.setRenderNames(null, getSafeName(variable.name, usedNames));
 			}
 		}
-		const namespace = module.getOrCreateNamespace();
+		const namespace = module.namespace;
 		if (namespace.included) {
 			namespace.setRenderNames(null, getSafeName(namespace.name, usedNames));
 		}

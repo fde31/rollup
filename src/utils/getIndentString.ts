@@ -19,15 +19,15 @@ function guessIndentString(code: string) {
 
 	// Otherwise, we need to guess the multiple
 	const min = spaced.reduce((previous, current) => {
-		const numSpaces = /^ +/.exec(current)[0].length;
+		const numSpaces = /^ +/.exec(current)![0].length;
 		return Math.min(numSpaces, previous);
 	}, Infinity);
 
 	return new Array(min + 1).join(' ');
 }
 
-export default function getIndentString(modules: Module[], options: { indent?: boolean }) {
-	if (options.indent !== true) return options.indent || '';
+export default function getIndentString(modules: Module[], options: { indent: true | string }) {
+	if (options.indent !== true) return options.indent;
 
 	for (let i = 0; i < modules.length; i++) {
 		const indent = guessIndentString(modules[i].originalCode);

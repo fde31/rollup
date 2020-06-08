@@ -1,5 +1,5 @@
 import { Bundle as MagicStringBundle } from 'magic-string';
-import { OutputOptions } from '../rollup/types';
+import { NormalizedOutputOptions } from '../rollup/types';
 import { error } from '../utils/error';
 import { isLegal } from '../utils/identifierHelpers';
 import { FinaliserOptions } from './index';
@@ -25,7 +25,7 @@ export default function iife(
 		varOrConst,
 		warn
 	}: FinaliserOptions,
-	options: OutputOptions
+	options: NormalizedOutputOptions
 ) {
 	const _ = options.compact ? '' : ' ';
 	const n = options.compact ? '' : '\n';
@@ -35,9 +35,9 @@ export default function iife(
 	const useVariableAssignment = !extend && !isNamespaced;
 
 	if (name && useVariableAssignment && !isLegal(name)) {
-		error({
+		return error({
 			code: 'ILLEGAL_IDENTIFIER_AS_NAME',
-			message: `Given name (${name}) is not legal JS identifier. If you need this you can try --extend option`
+			message: `Given name "${name}" is not a legal JS identifier. If you need this, you can try "output.extend: true".`
 		});
 	}
 
@@ -48,15 +48,15 @@ export default function iife(
 	const args = external.map(m => m.name);
 
 	if (hasExports && !name) {
-		error({
-			code: 'INVALID_OPTION',
-			message: `You must supply output.name for IIFE bundles`
+		warn({
+			code: 'MISSING_NAME_OPTION_FOR_IIFE_EXPORT',
+			message: `If you do not supply "output.name", you may not be able to access the exports of an IIFE bundle.`
 		});
 	}
 
 	if (namedExportsMode && hasExports) {
 		if (extend) {
-			deps.unshift(`${thisProp(name)}${_}=${_}${thisProp(name)}${_}||${_}{}`);
+			deps.unshift(`${thisProp(name!)}${_}=${_}${thisProp(name!)}${_}||${_}{}`);
 			args.unshift('exports');
 		} else {
 			deps.unshift('{}');
@@ -64,18 +64,18 @@ export default function iife(
 		}
 	}
 
-	const useStrict = options.strict !== false ? `${t}'use strict';${n}${n}` : ``;
+	const useStrict = options.strict ? `${t}'use strict';${n}${n}` : ``;
 
 	let wrapperIntro = `(function${_}(${args.join(`,${_}`)})${_}{${n}${useStrict}`;
 
-	if (hasExports && (!extend || !namedExportsMode)) {
+	if (hasExports && (!extend || !namedExportsMode) && name) {
 		wrapperIntro =
 			(useVariableAssignment ? `${varOrConst} ${name}` : thisProp(name)) +
 			`${_}=${_}${wrapperIntro}`;
 	}
 
 	if (isNamespaced && hasExports) {
-		wrapperIntro = setupNamespace(name, 'this', options.globals, options.compact) + wrapperIntro;
+		wrapperIntro = setupNamespace(name!, 'this', options.globals, options.compact) + wrapperIntro;
 	}
 
 	let wrapperOutro = `${n}${n}}(${deps.join(`,${_}`)}));`;
@@ -95,13 +95,11 @@ export default function iife(
 		dependencies,
 		namedExportsMode,
 		options.interop,
-		options.compact
+		options.compact,
+		t
 	);
 	if (exportBlock) magicString.append(n + n + exportBlock);
 	if (outro) magicString.append(outro);
 
-	return magicString
-		.indent(t)
-		.prepend(wrapperIntro)
-		.append(wrapperOutro);
+	return magicString.indent(t).prepend(wrapperIntro).append(wrapperOutro);
 }

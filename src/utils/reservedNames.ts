@@ -1,10 +1,13 @@
-import { INTEROP_DEFAULT_VARIABLE } from './variableNames';
-
 export interface NameCollection {
 	[name: string]: true;
 }
 
-const RESERVED_NAMES: NameCollection = Object.assign(Object.create(null), {
+// Verified on IE 6/7 that these keywords can't be used for object properties without escaping:
+//   break case catch class const continue debugger default delete do
+//   else enum export extends false finally for function if import
+//   in instanceof new null return super switch this throw true
+//   try typeof var void while with
+export const RESERVED_NAMES: NameCollection = Object.assign(Object.create(null), {
 	await: true,
 	break: true,
 	case: true,
@@ -21,6 +24,7 @@ const RESERVED_NAMES: NameCollection = Object.assign(Object.create(null), {
 	eval: true,
 	export: true,
 	extends: true,
+	false: true,
 	finally: true,
 	for: true,
 	function: true,
@@ -41,7 +45,9 @@ const RESERVED_NAMES: NameCollection = Object.assign(Object.create(null), {
 	static: true,
 	super: true,
 	switch: true,
+	this: true,
 	throw: true,
+	true: true,
 	try: true,
 	typeof: true,
 	undefined: true,
@@ -51,23 +57,3 @@ const RESERVED_NAMES: NameCollection = Object.assign(Object.create(null), {
 	with: true,
 	yield: true
 });
-
-const NONE: NameCollection = {};
-const EXPORTS: NameCollection = { exports: true };
-
-export const RESERVED_NAMES_BY_FORMAT: {
-	[format: string]: { formatGlobals: NameCollection; forbiddenNames: NameCollection };
-} = {
-	cjs: {
-		formatGlobals: { exports: true, module: true, [INTEROP_DEFAULT_VARIABLE]: true },
-		forbiddenNames: RESERVED_NAMES
-	},
-	iife: { formatGlobals: EXPORTS, forbiddenNames: RESERVED_NAMES },
-	amd: { formatGlobals: EXPORTS, forbiddenNames: RESERVED_NAMES },
-	umd: { formatGlobals: EXPORTS, forbiddenNames: RESERVED_NAMES },
-	system: {
-		formatGlobals: NONE,
-		forbiddenNames: Object.assign(Object.create(null), RESERVED_NAMES, EXPORTS)
-	},
-	es: { formatGlobals: NONE, forbiddenNames: RESERVED_NAMES }
-};

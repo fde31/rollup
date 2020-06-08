@@ -6,16 +6,16 @@ module.exports = {
 		external: ['asdf'],
 		plugins: [
 			{
-				resolveDynamicImport(specifier, parent) {
+				resolveDynamicImport() {
 					return 'asdf';
 				}
 			}
 		]
 	},
 	exports(exports) {
-		return exports.promise;
-	},
-	runtimeError(error) {
-		assert.equal("Cannot find module 'asdf'", error.message);
+		const expectedError = "Cannot find module 'asdf'";
+		return exports.promise.catch(err =>
+			assert.strictEqual(err.message.slice(0, expectedError.length), expectedError)
+		);
 	}
 };

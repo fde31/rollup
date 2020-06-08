@@ -1,6 +1,11 @@
 module.exports = {
 	description: 'uses const instead of var if specified (#653)',
 	options: {
-		output: { name: 'myBundle', preferConst: true }
+		external: ['other'],
+		output: {
+			globals: { other: 'other' },
+			name: 'myBundle',
+			preferConst: true
+		}
 	}
 };

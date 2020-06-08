@@ -1,34 +1,38 @@
-import CallOptions from '../CallOptions';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
-import { EMPTY_PATH, ObjectPath } from '../values';
+import { CallOptions } from '../CallOptions';
+import { HasEffectsContext } from '../ExecutionContext';
+import ClassBodyScope from '../scopes/ClassBodyScope';
+import Scope from '../scopes/Scope';
+import { EMPTY_PATH, ObjectPath } from '../utils/PathTracker';
+import FieldDefinition from './FieldDefinition';
 import MethodDefinition from './MethodDefinition';
 import * as NodeType from './NodeType';
 import { NodeBase } from './shared/Node';
 
 export default class ClassBody extends NodeBase {
-	type: NodeType.tClassBody;
-	body: MethodDefinition[];
+	body!: (MethodDefinition | FieldDefinition)[];
+	type!: NodeType.tClassBody;
 
-	private classConstructor: MethodDefinition | null;
+	private classConstructor!: MethodDefinition | null;
+
+	createScope(parentScope: Scope) {
+		this.scope = new ClassBodyScope(parentScope);
+	}
 
 	hasEffectsWhenCalledAtPath(
 		path: ObjectPath,
 		callOptions: CallOptions,
-		options: ExecutionPathOptions
+		context: HasEffectsContext
 	) {
-		if (path.length > 0) {
-			return true;
-		}
+		if (path.length > 0) return true;
 		return (
 			this.classConstructor !== null &&
-			this.classConstructor.hasEffectsWhenCalledAtPath(EMPTY_PATH, callOptions, options)
+			this.classConstructor.hasEffectsWhenCalledAtPath(EMPTY_PATH, callOptions, context)
 		);
 	}
 
 	initialise() {
-		this.included = false;
 		for (const method of this.body) {
-			if (method.kind === 'constructor') {
+			if (method instanceof MethodDefinition && method.kind === 'constructor') {
 				this.classConstructor = method;
 				return;
 			}

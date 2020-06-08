@@ -1,4 +1,4 @@
-System.register([], function (exports, module) {
+System.register([], function (exports) {
 	'use strict';
 	return {
 		execute: function () {
@@ -9,12 +9,11 @@ System.register([], function (exports, module) {
 
 			singleLine = exports('singleLine', /*#__PURE__*/pureFunc());
 
-			var multiLine = exports('multiLine',
-				/*#__PURE__*/
+			var multiLine =
+				exports('multiLine', /*#__PURE__*/
 				pureFunc());
 
-			multiLine = exports('multiLine',
-				/*#__PURE__*/
+			multiLine = exports('multiLine', /*#__PURE__*/
 				pureFunc());
 
 		}

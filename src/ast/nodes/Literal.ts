@@ -1,42 +1,43 @@
 import MagicString from 'magic-string';
-import { RenderOptions } from '../../utils/renderHelpers';
-import CallOptions from '../CallOptions';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
+import { CallOptions } from '../CallOptions';
+import { HasEffectsContext } from '../ExecutionContext';
+import { ObjectPath } from '../utils/PathTracker';
 import {
 	getLiteralMembersForValue,
 	getMemberReturnExpressionWhenCalled,
 	hasMemberEffectWhenCalled,
 	LiteralValueOrUnknown,
 	MemberDescription,
-	ObjectPath,
-	UNKNOWN_EXPRESSION,
-	UNKNOWN_VALUE
+	UnknownValue,
+	UNKNOWN_EXPRESSION
 } from '../values';
 import * as NodeType from './NodeType';
-import { Node, NodeBase } from './shared/Node';
+import { GenericEsTreeNode, NodeBase } from './shared/Node';
 
 export type LiteralValue = string | boolean | null | number | RegExp | undefined;
 
-export function isLiteral(node: Node): node is Literal {
-	return node.type === NodeType.Literal;
-}
+export default class Literal<T extends LiteralValue = LiteralValue> extends NodeBase {
+	regex?: {
+		flags: string;
+		pattern: string;
+	};
+	type!: NodeType.tLiteral;
+	value!: T;
 
-export default class Literal<T = LiteralValue> extends NodeBase {
-	type: NodeType.tLiteral;
-	value: T;
-
-	private members: { [key: string]: MemberDescription };
+	private members!: { [key: string]: MemberDescription };
 
 	getLiteralValueAtPath(path: ObjectPath): LiteralValueOrUnknown {
 		if (
 			path.length > 0 ||
-			// unknown literals such as bigints can also be null but do not start with an "n"
+			// unknown literals can also be null but do not start with an "n"
 			(this.value === null && this.context.code.charCodeAt(this.start) !== 110) ||
-			typeof this.value === 'bigint'
+			typeof this.value === 'bigint' ||
+			// to support shims for regular expressions
+			this.context.code.charCodeAt(this.start) === 47
 		) {
-			return UNKNOWN_VALUE;
+			return UnknownValue;
 		}
-		return this.value as any;
+		return this.value;
 	}
 
 	getReturnExpressionWhenCalledAtPath(path: ObjectPath) {
@@ -58,22 +59,27 @@ export default class Literal<T = LiteralValue> extends NodeBase {
 	hasEffectsWhenCalledAtPath(
 		path: ObjectPath,
 		callOptions: CallOptions,
-		options: ExecutionPathOptions
+		context: HasEffectsContext
 	): boolean {
 		if (path.length === 1) {
-			return hasMemberEffectWhenCalled(this.members, path[0], this.included, callOptions, options);
+			return hasMemberEffectWhenCalled(this.members, path[0], this.included, callOptions, context);
 		}
 		return true;
 	}
 
 	initialise() {
-		this.included = false;
 		this.members = getLiteralMembersForValue(this.value);
 	}
 
-	render(code: MagicString, _options: RenderOptions) {
+	parseNode(esTreeNode: GenericEsTreeNode) {
+		this.value = esTreeNode.value;
+		this.regex = esTreeNode.regex;
+		super.parseNode(esTreeNode);
+	}
+
+	render(code: MagicString) {
 		if (typeof this.value === 'string') {
-			(<[number, number][]>code.indentExclusionRanges).push([this.start + 1, this.end - 1]);
+			(code.indentExclusionRanges as [number, number][]).push([this.start + 1, this.end - 1]);
 		}
 	}
 }

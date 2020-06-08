@@ -1,20 +1,19 @@
-import CallOptions from '../CallOptions';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
+import { CallOptions } from '../CallOptions';
+import { HasEffectsContext } from '../ExecutionContext';
+import { ObjectPath, UNKNOWN_PATH } from '../utils/PathTracker';
 import {
 	arrayMembers,
 	getMemberReturnExpressionWhenCalled,
 	hasMemberEffectWhenCalled,
-	ObjectPath,
-	UNKNOWN_EXPRESSION,
-	UNKNOWN_PATH
+	UNKNOWN_EXPRESSION
 } from '../values';
 import * as NodeType from './NodeType';
 import { ExpressionNode, NodeBase } from './shared/Node';
 import SpreadElement from './SpreadElement';
 
 export default class ArrayExpression extends NodeBase {
-	type: NodeType.tArrayExpression;
-	elements: (ExpressionNode | SpreadElement | null)[];
+	elements!: (ExpressionNode | SpreadElement | null)[];
+	type!: NodeType.tArrayExpression;
 
 	bind() {
 		super.bind();
@@ -35,10 +34,10 @@ export default class ArrayExpression extends NodeBase {
 	hasEffectsWhenCalledAtPath(
 		path: ObjectPath,
 		callOptions: CallOptions,
-		options: ExecutionPathOptions
+		context: HasEffectsContext
 	): boolean {
 		if (path.length === 1) {
-			return hasMemberEffectWhenCalled(arrayMembers, path[0], this.included, callOptions, options);
+			return hasMemberEffectWhenCalled(arrayMembers, path[0], this.included, callOptions, context);
 		}
 		return true;
 	}

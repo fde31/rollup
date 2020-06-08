@@ -1,10 +1,12 @@
-define(['exports', '../lib/lib2.js'], function (exports, __chunk_2) { 'use strict';
+define(['exports', '../lib/lib2'], function (exports, lib2) { 'use strict';
 
   function fn () {
-    __chunk_2.fn();
+    lib2.fn();
     console.log('dep2 fn');
   }
 
   exports.fn = fn;
+
+  Object.defineProperty(exports, '__esModule', { value: true });
 
 });

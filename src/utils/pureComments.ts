@@ -1,11 +1,20 @@
-import * as acorn from 'acorn';
 // @ts-ignore
 import { base as basicWalker } from 'acorn-walk';
-import * as ESTree from 'estree';
+import * as acorn from 'fork-acorn-optional-chaining';
 import { CommentDescription } from '../Module';
 
+// patch up acorn-walk until class-fields are officially supported
+basicWalker.FieldDefinition = function (node: any, st: any, c: any) {
+	if (node.computed) {
+		c(node.key, st, 'Expression');
+	}
+	if (node.value) {
+		c(node.value, st, 'Expression');
+	}
+};
+
 function handlePureAnnotationsOfNode(
-	node: ESTree.Node & acorn.Node,
+	node: acorn.Node,
 	state: { commentIndex: number; commentNodes: CommentDescription[] },
 	type: string = node.type
 ) {
@@ -20,7 +29,7 @@ function handlePureAnnotationsOfNode(
 }
 
 function markPureNode(
-	node: ESTree.Node & { annotations?: CommentDescription[] },
+	node: acorn.Node & { annotations?: CommentDescription[] },
 	comment: CommentDescription
 ) {
 	if (node.annotations) {
@@ -29,19 +38,19 @@ function markPureNode(
 		node.annotations = [comment];
 	}
 	if (node.type === 'ExpressionStatement') {
-		node = node.expression;
+		node = (node as any).expression;
 	}
 	if (node.type === 'CallExpression' || node.type === 'NewExpression') {
-		(<any>node).annotatedPure = true;
+		(node as any).annotatedPure = true;
 	}
 }
 
 const pureCommentRegex = /[@#]__PURE__/;
 const isPureComment = (comment: CommentDescription) => pureCommentRegex.test(comment.text);
 
-export function markPureCallExpressions(comments: CommentDescription[], esTreeAst: ESTree.Program) {
-	handlePureAnnotationsOfNode(<any>esTreeAst, {
-		commentNodes: comments.filter(isPureComment),
-		commentIndex: 0
+export function markPureCallExpressions(comments: CommentDescription[], esTreeAst: acorn.Node) {
+	handlePureAnnotationsOfNode(esTreeAst, {
+		commentIndex: 0,
+		commentNodes: comments.filter(isPureComment)
 	});
 }

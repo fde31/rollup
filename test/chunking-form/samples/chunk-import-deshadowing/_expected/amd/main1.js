@@ -1,10 +1,12 @@
-define(['./generated-chunk.js'], function (__chunk_1) { 'use strict';
+define(['./generated-lib'], function (lib) { 'use strict';
 
-  function fn () {
-    var emptyFunction = __chunk_1.emptyFunction;
-    console.log(emptyFunction);
-  }
+	function fn() {
+		var emptyFunction = lib.emptyFunction;
+		console.log(emptyFunction);
+	}
 
-  fn();
+	console.log('dep1');
+
+	fn();
 
 });

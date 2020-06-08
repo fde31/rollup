@@ -1,14 +1,14 @@
 import MagicString from 'magic-string';
 import { RenderOptions } from '../../utils/renderHelpers';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
-import { UNKNOWN_PATH } from '../values';
+import { HasEffectsContext } from '../ExecutionContext';
+import { UNKNOWN_PATH } from '../utils/PathTracker';
 import * as NodeType from './NodeType';
 import { ExpressionNode, NodeBase } from './shared/Node';
 
 export default class YieldExpression extends NodeBase {
-	type: NodeType.tYieldExpression;
-	argument: ExpressionNode | null;
-	delegate: boolean;
+	argument!: ExpressionNode | null;
+	delegate!: boolean;
+	type!: NodeType.tYieldExpression;
 
 	bind() {
 		super.bind();
@@ -17,9 +17,10 @@ export default class YieldExpression extends NodeBase {
 		}
 	}
 
-	hasEffects(options: ExecutionPathOptions) {
+	hasEffects(context: HasEffectsContext) {
 		return (
-			!options.ignoreReturnAwaitYield() || (this.argument && this.argument.hasEffects(options))
+			!context.ignore.returnAwaitYield ||
+			(this.argument !== null && this.argument.hasEffects(context))
 		);
 	}
 

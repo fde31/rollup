@@ -1,4 +1,5 @@
 'use strict';
 
-require('./generated-chunk.js');
+require('./generated-lib.js');
 
+console.log('dep2');

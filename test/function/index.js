@@ -1,11 +1,9 @@
 const path = require('path');
 const assert = require('assert');
-const buble = require('buble');
 const rollup = require('../../dist/rollup');
 const { compareError, compareWarnings, extend, runTestSuiteWithSamples } = require('../utils.js');
 
-function requireWithContext(code, context) {
-	const module = { exports: {} };
+function requireWithContext(code, context, module) {
 	const contextWithExports = Object.assign({}, context, { module, exports: module.exports });
 	const contextKeys = Object.keys(contextWithExports);
 	const contextValues = contextKeys.map(key => contextWithExports[key]);
@@ -20,14 +18,20 @@ function requireWithContext(code, context) {
 }
 
 function runCodeSplitTest(codeMap, entryId, configContext) {
+	const exportsMap = Object.create(null);
+
 	const requireFromOutputVia = importer => importee => {
 		const outputId = path.posix.join(path.posix.dirname(importer), importee);
+		if (outputId in exportsMap) {
+			return exportsMap[outputId];
+		}
 		const code = codeMap[outputId];
 		if (typeof code !== 'undefined') {
-			return requireWithContext(
+			return (exportsMap[outputId] = requireWithContext(
 				code,
-				Object.assign({ require: requireFromOutputVia(outputId) }, context)
-			);
+				Object.assign({ require: requireFromOutputVia(outputId) }, context),
+				(exportsMap[outputId] = { exports: {} })
+			));
 		} else {
 			return require(importee);
 		}
@@ -36,10 +40,7 @@ function runCodeSplitTest(codeMap, entryId, configContext) {
 	const context = Object.assign({ assert }, configContext);
 	let exports;
 	try {
-		exports = requireWithContext(
-			codeMap[entryId],
-			Object.assign({ require: requireFromOutputVia(entryId) }, context)
-		);
+		exports = requireFromOutputVia(entryId)(entryId);
 	} catch (error) {
 		return { error, exports: error.exports };
 	}
@@ -51,7 +52,7 @@ runTestSuiteWithSamples('function', path.resolve(__dirname, 'samples'), (dir, co
 		path.basename(dir) + ': ' + config.description,
 		() => {
 			if (config.show) console.group(path.basename(dir));
-
+			if (config.before) config.before();
 			process.chdir(dir);
 			const warnings = [];
 
@@ -60,7 +61,8 @@ runTestSuiteWithSamples('function', path.resolve(__dirname, 'samples'), (dir, co
 					extend(
 						{
 							input: dir + '/main.js',
-							onwarn: warning => warnings.push(warning)
+							onwarn: warning => warnings.push(warning),
+							strictDeprecations: true
 						},
 						config.options || {}
 					)
@@ -74,13 +76,15 @@ runTestSuiteWithSamples('function', path.resolve(__dirname, 'samples'), (dir, co
 
 					let result;
 
-					return bundle
-						.generate(
-							extend(
-								{
-									format: 'cjs'
-								},
-								(config.options || {}).output || {}
+					return Promise.resolve()
+						.then(() =>
+							bundle.generate(
+								extend(
+									{
+										format: 'cjs'
+									},
+									(config.options || {}).output || {}
+								)
 							)
 						)
 						.then(({ output }) => {
@@ -101,16 +105,6 @@ runTestSuiteWithSamples('function', path.resolve(__dirname, 'samples'), (dir, co
 							if (unintendedError) throw unintendedError;
 							if (config.error || config.generateError) return;
 
-							if (config.buble) {
-								for (const chunk of result) {
-									if (chunk.code) {
-										chunk.code = buble.transform(chunk.code, {
-											transforms: { modules: false }
-										}).code;
-									}
-								}
-							}
-
 							const codeMap = result.reduce((codeMap, chunk) => {
 								codeMap[chunk.fileName] = chunk.code;
 								return codeMap;
@@ -121,7 +115,11 @@ runTestSuiteWithSamples('function', path.resolve(__dirname, 'samples'), (dir, co
 
 							const entryId = result.length === 1 ? result[0].fileName : 'main.js';
 							if (!codeMap.hasOwnProperty(entryId)) {
-								throw new Error(`Could not find entry "${entryId}" in generated output.`);
+								throw new Error(
+									`Could not find entry "${entryId}" in generated output.\nChunks:\n${Object.keys(
+										codeMap
+									).join('\n')}`
+								);
 							}
 							const { exports, error } = runCodeSplitTest(codeMap, entryId, config.context);
 							if (config.runtimeError) {
@@ -174,14 +172,14 @@ runTestSuiteWithSamples('function', path.resolve(__dirname, 'samples'), (dir, co
 												.join('\n')}`
 										);
 									}
-
 									if (config.show) console.groupEnd();
-
 									if (unintendedError) throw unintendedError;
+									if (config.after) config.after();
 								});
 						});
 				})
 				.catch(err => {
+					if (config.after) config.after();
 					if (config.error) {
 						compareError(err, config.error);
 					} else {

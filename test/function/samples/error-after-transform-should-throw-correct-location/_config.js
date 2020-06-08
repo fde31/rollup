@@ -20,8 +20,9 @@ module.exports = {
 	},
 	error: {
 		code: 'MISSING_EXPORT',
-		message: `'default' is not exported by empty.js`,
+		message: `'default' is not exported by empty.js, imported by main.js`,
 		pos: 44,
+		watchFiles: [path.resolve(__dirname, 'main.js'), path.resolve(__dirname, 'empty.js')],
 		loc: {
 			file: path.resolve(__dirname, 'main.js'),
 			line: 1,
@@ -33,6 +34,6 @@ module.exports = {
 			2:
 			3: Object.assign({}, a);
 		`,
-		url: `https://rollupjs.org/guide/en#error-name-is-not-exported-by-module-`
+		url: `https://rollupjs.org/guide/en/#error-name-is-not-exported-by-module`
 	}
 };

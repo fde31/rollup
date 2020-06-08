@@ -1,7 +1,7 @@
 var myBundle = (function (exports, a, Test$1) {
   'use strict';
 
-  Test$1 = Test$1 && Test$1.hasOwnProperty('default') ? Test$1['default'] : Test$1;
+  Test$1 = Test$1 && Object.prototype.hasOwnProperty.call(Test$1, 'default') ? Test$1['default'] : Test$1;
 
   const Test = () => {
     console.log(a.Test);
@@ -16,4 +16,4 @@ var myBundle = (function (exports, a, Test$1) {
 
   return exports;
 
-}({}, a, Test$1));
+}({}, a, b));

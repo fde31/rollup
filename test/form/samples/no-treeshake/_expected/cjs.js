@@ -35,6 +35,25 @@ function unusedButIncluded() {
 	}
 }
 
+function test(
+	unusedParam = {
+		prop: function test() {
+			var unused = 1;
+		}
+	}
+) {}
+
+test({
+	prop: function test() {
+		var unused = 1;
+	}
+});
+
+try {
+	const x = 1;
+} catch {}
+
 exports.create = create;
 exports.getPrototypeOf = getPrototypeOf;
+exports.quux = quux;
 exports.strange = quux;

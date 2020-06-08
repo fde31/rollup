@@ -2,86 +2,69 @@ import MagicString from 'magic-string';
 import { RenderOptions } from '../../utils/renderHelpers';
 import { removeAnnotations } from '../../utils/treeshakeNode';
 import { DeoptimizableEntity } from '../DeoptimizableEntity';
-import { ExecutionPathOptions } from '../ExecutionPathOptions';
-import { EMPTY_IMMUTABLE_TRACKER } from '../utils/ImmutableEntityPathTracker';
-import { EMPTY_PATH, LiteralValueOrUnknown, UNKNOWN_VALUE } from '../values';
+import { BROKEN_FLOW_NONE, HasEffectsContext, InclusionContext } from '../ExecutionContext';
+import { EMPTY_PATH, SHARED_RECURSION_TRACKER } from '../utils/PathTracker';
+import { LiteralValueOrUnknown, UnknownValue } from '../values';
 import * as NodeType from './NodeType';
-import { ExpressionNode, StatementBase, StatementNode } from './shared/Node';
+import { ExpressionNode, IncludeChildren, StatementBase, StatementNode } from './shared/Node';
+
+const unset = Symbol('unset');
 
 export default class IfStatement extends StatementBase implements DeoptimizableEntity {
-	type: NodeType.tIfStatement;
-	test: ExpressionNode;
-	consequent: StatementNode;
-	alternate: StatementNode | null;
+	alternate!: StatementNode | null;
+	consequent!: StatementNode;
+	test!: ExpressionNode;
+	type!: NodeType.tIfStatement;
 
-	private testValue: LiteralValueOrUnknown;
-	private isTestValueAnalysed: boolean;
-
-	bind() {
-		super.bind();
-		if (!this.isTestValueAnalysed) {
-			this.testValue = UNKNOWN_VALUE;
-			this.isTestValueAnalysed = true;
-			this.testValue = this.test.getLiteralValueAtPath(EMPTY_PATH, EMPTY_IMMUTABLE_TRACKER, this);
-		}
-	}
+	private testValue: LiteralValueOrUnknown | typeof unset = unset;
 
 	deoptimizeCache() {
-		this.testValue = UNKNOWN_VALUE;
+		this.testValue = UnknownValue;
 	}
 
-	hasEffects(options: ExecutionPathOptions): boolean {
-		if (this.test.hasEffects(options)) return true;
-		if (this.testValue === UNKNOWN_VALUE) {
-			return (
-				this.consequent.hasEffects(options) ||
-				(this.alternate !== null && this.alternate.hasEffects(options))
-			);
+	hasEffects(context: HasEffectsContext): boolean {
+		if (this.test.hasEffects(context)) {
+			return true;
 		}
-		return this.testValue
-			? this.consequent.hasEffects(options)
-			: this.alternate !== null && this.alternate.hasEffects(options);
+		const testValue = this.getTestValue();
+		if (testValue === UnknownValue) {
+			const { brokenFlow } = context;
+			if (this.consequent.hasEffects(context)) return true;
+			const consequentBrokenFlow = context.brokenFlow;
+			context.brokenFlow = brokenFlow;
+			if (this.alternate === null) return false;
+			if (this.alternate.hasEffects(context)) return true;
+			context.brokenFlow =
+				context.brokenFlow < consequentBrokenFlow ? context.brokenFlow : consequentBrokenFlow;
+			return false;
+		}
+		return testValue
+			? this.consequent.hasEffects(context)
+			: this.alternate !== null && this.alternate.hasEffects(context);
 	}
 
-	include(includeAllChildrenRecursively: boolean) {
+	include(context: InclusionContext, includeChildrenRecursively: IncludeChildren) {
 		this.included = true;
-		if (includeAllChildrenRecursively) {
-			this.test.include(true);
-			this.consequent.include(true);
-			if (this.alternate !== null) {
-				this.alternate.include(true);
+		if (includeChildrenRecursively) {
+			this.includeRecursively(includeChildrenRecursively, context);
+		} else {
+			const testValue = this.getTestValue();
+			if (testValue === UnknownValue) {
+				this.includeUnknownTest(context);
+			} else {
+				this.includeKnownTest(context, testValue);
 			}
-			return;
 		}
-		const hasUnknownTest = this.testValue === UNKNOWN_VALUE;
-		if (hasUnknownTest || this.test.shouldBeIncluded()) {
-			this.test.include(false);
-		}
-		if ((hasUnknownTest || this.testValue) && this.consequent.shouldBeIncluded()) {
-			this.consequent.include(false);
-		}
-		if (
-			this.alternate !== null &&
-			((hasUnknownTest || !this.testValue) && this.alternate.shouldBeIncluded())
-		) {
-			this.alternate.include(false);
-		}
-	}
-
-	initialise() {
-		this.included = false;
-		this.isTestValueAnalysed = false;
 	}
 
 	render(code: MagicString, options: RenderOptions) {
 		// Note that unknown test values are always included
+		const testValue = this.getTestValue();
 		if (
 			!this.test.included &&
-			(this.testValue
-				? this.alternate === null || !this.alternate.included
-				: !this.consequent.included)
+			(testValue ? this.alternate === null || !this.alternate.included : !this.consequent.included)
 		) {
-			const singleRetainedBranch = this.testValue ? this.consequent : this.alternate;
+			const singleRetainedBranch = (testValue ? this.consequent : this.alternate)!;
 			code.remove(this.start, singleRetainedBranch.start);
 			code.remove(singleRetainedBranch.end, this.end);
 			removeAnnotations(this, code);
@@ -90,7 +73,7 @@ export default class IfStatement extends StatementBase implements DeoptimizableE
 			if (this.test.included) {
 				this.test.render(code, options);
 			} else {
-				code.overwrite(this.test.start, this.test.end, this.testValue ? 'true' : 'false');
+				code.overwrite(this.test.start, this.test.end, testValue ? 'true' : 'false');
 			}
 			if (this.consequent.included) {
 				this.consequent.render(code, options);
@@ -99,11 +82,64 @@ export default class IfStatement extends StatementBase implements DeoptimizableE
 			}
 			if (this.alternate !== null) {
 				if (this.alternate.included) {
+					if (code.original.charCodeAt(this.alternate.start - 1) === 101 /* e */) {
+						code.prependLeft(this.alternate.start, ' ');
+					}
 					this.alternate.render(code, options);
 				} else {
 					code.remove(this.consequent.end, this.alternate.end);
 				}
 			}
+		}
+	}
+
+	private getTestValue(): LiteralValueOrUnknown {
+		if (this.testValue === unset) {
+			return (this.testValue = this.test.getLiteralValueAtPath(
+				EMPTY_PATH,
+				SHARED_RECURSION_TRACKER,
+				this
+			));
+		}
+		return this.testValue;
+	}
+
+	private includeKnownTest(context: InclusionContext, testValue: LiteralValueOrUnknown) {
+		if (this.test.shouldBeIncluded(context)) {
+			this.test.include(context, false);
+		}
+		if (testValue && this.consequent.shouldBeIncluded(context)) {
+			this.consequent.include(context, false);
+		}
+		if (this.alternate !== null && !testValue && this.alternate.shouldBeIncluded(context)) {
+			this.alternate.include(context, false);
+		}
+	}
+
+	private includeRecursively(
+		includeChildrenRecursively: true | 'variables',
+		context: InclusionContext
+	) {
+		this.test.include(context, includeChildrenRecursively);
+		this.consequent.include(context, includeChildrenRecursively);
+		if (this.alternate !== null) {
+			this.alternate.include(context, includeChildrenRecursively);
+		}
+	}
+
+	private includeUnknownTest(context: InclusionContext) {
+		this.test.include(context, false);
+		const { brokenFlow } = context;
+		let consequentBrokenFlow = BROKEN_FLOW_NONE;
+		if (this.consequent.shouldBeIncluded(context)) {
+			this.consequent.include(context, false);
+			consequentBrokenFlow = context.brokenFlow;
+			context.brokenFlow = brokenFlow;
+		}
+		if (this.alternate !== null && this.alternate.shouldBeIncluded(context)) {
+			this.alternate.include(context, false);
+			context.brokenFlow =
+				context.brokenFlow < consequentBrokenFlow ? context.brokenFlow : consequentBrokenFlow;
 		}
 	}
 }

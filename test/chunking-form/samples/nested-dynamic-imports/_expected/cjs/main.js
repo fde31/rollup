@@ -1,4 +1,4 @@
 'use strict';
 
-Promise.resolve(require('./generated-chunk.js'));
+Promise.resolve().then(function () { return require('./generated-dynamic1.js'); });
 console.log('main');

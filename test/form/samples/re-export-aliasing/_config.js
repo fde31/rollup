@@ -1,7 +1,10 @@
 module.exports = {
 	description: 'external re-exports aliasing',
 	options: {
-		output: { name: 'reexportsAliasingExternal' },
-		external: ['external']
+		output: {
+			globals: { d: 'd' },
+			name: 'reexportsAliasingExternal'
+		},
+		external: ['d']
 	}
 };

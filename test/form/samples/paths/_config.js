@@ -1,6 +1,10 @@
 module.exports = {
 	description: 'external paths (#754)',
 	options: {
-		output: { paths: { foo: 'https://unpkg.com/foo' } }
+		external: ['foo'],
+		output: {
+			globals: { foo: 'foo' },
+			paths: { foo: 'https://unpkg.com/foo' }
+		}
 	}
 };

@@ -4,8 +4,9 @@ module.exports = {
 	description: 'reexporting a missing identifier should print an error',
 	error: {
 		code: 'MISSING_EXPORT',
-		message: `'foo' is not exported by empty.js`,
+		message: `'foo' is not exported by empty.js, imported by main.js`,
 		pos: 9,
+		watchFiles: [path.resolve(__dirname, 'main.js'), path.resolve(__dirname, 'empty.js')],
 		loc: {
 			file: path.resolve(__dirname, 'main.js'),
 			line: 1,
@@ -15,6 +16,6 @@ module.exports = {
 			1: export { foo as bar } from './empty.js';
 			            ^
 		`,
-		url: 'https://rollupjs.org/guide/en#error-name-is-not-exported-by-module-'
+		url: 'https://rollupjs.org/guide/en/#error-name-is-not-exported-by-module'
 	}
 };
